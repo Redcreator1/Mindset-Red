@@ -54,6 +54,14 @@ node dist/cli.js serve repoA repoB --tenants ctx.tenants.json
 # ré-indexée et le contexte régénéré (signature HMAC vérifiée)
 node dist/cli.js serve [path] --webhook-secret SECRET
 
+# GitHub App : imprime le manifest pour une création en un clic
+node dist/cli.js app manifest --base-url https://mon-hote.example.com
+
+# Facturation Stripe : les webhooks d'abonnement font basculer le plan
+# d'un tenant (free/pro/team/enterprise → quotas), persisté sur disque
+STRIPE_PRICE_MAP='{"price_123":"pro"}' \
+  node dist/cli.js serve [path] --tenants ctx.tenants.json --stripe-secret whsec_...
+
 # Génération enrichie par Claude : une synthèse narrative du projet est
 # rédigée par Claude Opus 4.8 (thinking adaptatif) et injectée dans
 # CLAUDE.md et docs/ARCHITECTURE.md (nécessite ANTHROPIC_API_KEY)
@@ -94,6 +102,9 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `GET /v1/repos/:repo/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
 | `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut) ou **sémantique** (`mode=semantic`, embeddings Voyage) |
 | `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
+| `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
+| `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) |
+| `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant |
 
 Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
 `/v1/context/claude`, `/v1/memory/search`) restent disponibles.
@@ -106,14 +117,15 @@ Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
 
 ```json
 { "tenants": [
-    { "key": "sk-alice", "name": "alice", "repos": ["frontend"], "dailyLimit": 1000 },
-    { "key": "sk-admin", "name": "admin", "repos": "*" }
+    { "key": "sk-alice", "name": "alice", "repos": ["frontend"], "plan": "pro" },
+    { "key": "sk-admin", "name": "admin", "repos": "*", "plan": "enterprise" }
 ] }
 ```
 
-Chaque clé est scopée à ses repos (403 hors scope), les quotas journaliers
-renvoient 429 une fois dépassés, et `/v1/usage` expose le métering — la
-fondation de la facturation.
+Chaque clé est scopée à ses repos (403 hors scope), le **plan** décide du quota
+journalier (`free` 200 · `pro` 5 000 · `team` 50 000 · `enterprise` illimité —
+429 au-delà), et `/v1/usage` expose le métering. Les webhooks Stripe font
+basculer le plan automatiquement et le changement est persisté dans le fichier.
 
 ### Édition manuelle préservée
 
@@ -142,6 +154,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.4 — recherche **sémantique par embeddings** (Voyage AI, `index --embed` + `mode=semantic`, pluggable à côté de BM25)
 - [x] v0.4 — **webhooks GitHub temps réel** : HMAC vérifiée, mémoire ré-indexée et contexte régénéré à chaque push
 - [x] v0.4 — **multi-tenants** : clés par client, scopes par repo, quotas journaliers, métering `/v1/usage`
-- [ ] GitHub App packagée (installation un clic ; les webhooks sont déjà servis)
-- [ ] Facturation branchée sur le métering (Stripe) + persistance des quotas
+- [x] v0.5 — **GitHub App packagée** : manifest servi (`/v1/app/manifest`, création un clic) + webhook d'installation (`/v1/app/webhook`, HMAC vérifiée, cycle de vie classifié)
+- [x] v0.5 — **facturation Stripe** : `POST /v1/stripe/webhook` (signature vérifiée sans SDK) fait basculer le plan d'un tenant ; plans → quotas, store de tenants persistant
 - [ ] Recherche hybride BM25 + embeddings avec re-ranking
+- [ ] Dashboard web (gestion des tenants, visualisation de la mémoire)

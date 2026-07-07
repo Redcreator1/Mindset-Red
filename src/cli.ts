@@ -10,9 +10,11 @@ import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
 import { hasEmbeddingKey, indexEmbeddings, semanticSearch } from "./embeddings.js";
 import { loadMemory, searchMemory } from "./memory.js";
-import { loadTenants } from "./tenants.js";
+import { TenantStore } from "./tenants.js";
+import { loadPriceMap } from "./billing.js";
+import { buildAppManifest, installUrlHint } from "./githubapp.js";
 
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -35,14 +37,21 @@ Usage:
   ctx search <query> [--repo-path path] [--semantic] [--limit N]
                                Search the memory layer from the terminal.
                                Default is BM25; --semantic uses embeddings
-  ctx serve [path ...] [--port N] [--api-key KEY] [--tenants FILE] [--webhook-secret S]
+  ctx serve [path ...] [--port N] [--api-key KEY] [--tenants FILE]
+            [--webhook-secret S] [--stripe-secret S] [--base-url URL]
                                Serve one or more repos over HTTP for AI tools.
                                Multiple paths enable /v1/repos/:name/… routes;
                                --api-key (or CTX_API_KEY) sets a single shared
                                key; --tenants points to a ctx.tenants.json for
-                               per-tenant keys, repo scopes and daily quotas;
+                               per-tenant keys, repo scopes and plan quotas
+                               (rewritten in place on Stripe plan changes);
                                --webhook-secret (or CTX_WEBHOOK_SECRET) enables
-                               POST /v1/repos/:name/webhook for GitHub events
+                               the GitHub webhook + App routes; --stripe-secret
+                               (or CTX_STRIPE_SECRET, with STRIPE_PRICE_MAP)
+                               enables POST /v1/stripe/webhook billing
+  ctx app manifest [--base-url URL]
+                               Print the GitHub App manifest (JSON) for
+                               one-click App creation
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -158,18 +167,24 @@ function cmdServe(argv: string[]): void {
   const port = Number(arg("--port", argv) ?? 4870) || 4870;
   const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
   const webhookSecret = arg("--webhook-secret", argv) ?? process.env.CTX_WEBHOOK_SECRET;
+  const stripeSecret = arg("--stripe-secret", argv) ?? process.env.CTX_STRIPE_SECRET;
+  const stripePriceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
+  const appBaseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL;
   const tenantsFile = arg("--tenants", argv);
-  const tenants = tenantsFile ? loadTenants(resolve(tenantsFile)) : undefined;
+  const tenantStore = tenantsFile ? TenantStore.fromFile(resolve(tenantsFile)) : undefined;
   const paths = positionals(argv).map((p) => resolve(p));
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey, tenants, webhookSecret }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripePriceMap, appBaseUrl }).listen(port, () => {
     const names = Object.keys(repos);
-    const authLabel = tenants ? ` [${tenants.length} tenant(s)]` : apiKey ? " [api-key required]" : "";
-    console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${authLabel}${webhookSecret ? " [webhooks on]" : ""}`);
+    const authLabel = tenantStore ? ` [${tenantStore.all().length} tenant(s)]` : apiKey ? " [api-key required]" : "";
+    const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");
+    console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${authLabel}${flags ? ` [${flags}]` : ""}`);
     console.log(`  http://localhost:${port}/v1/health`);
     console.log(`  http://localhost:${port}/v1/repos`);
+    console.log(`  http://localhost:${port}/v1/app/manifest`);
+    if (stripeSecret) console.log(`  http://localhost:${port}/v1/stripe/webhook  (POST)`);
     if (names.length === 1) {
       console.log(`  http://localhost:${port}/v1/context/claude   (agents|architecture|contributing|prompts)`);
       console.log(`  http://localhost:${port}/v1/memory/search?q=fix`);
@@ -178,6 +193,18 @@ function cmdServe(argv: string[]): void {
       console.log(`  http://localhost:${port}/v1/repos/${names[0]}/memory/search?q=fix`);
     }
   });
+}
+
+function cmdApp(argv: string[]): void {
+  const sub = positionals(argv)[0];
+  const baseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL ?? "https://your-host.example.com";
+  if (sub === "manifest" || sub === undefined) {
+    console.log(JSON.stringify(buildAppManifest(baseUrl), null, 2));
+    console.error(`\n${installUrlHint(baseUrl)}`);
+    return;
+  }
+  console.error(`Unknown app subcommand '${sub}'. Try: ctx app manifest`);
+  process.exit(1);
 }
 
 const [, , command, ...rest] = process.argv;
@@ -195,6 +222,9 @@ switch (command) {
     break;
   case "serve":
     cmdServe(rest);
+    break;
+  case "app":
+    cmdApp(rest);
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));

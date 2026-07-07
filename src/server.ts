@@ -6,7 +6,9 @@ import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, loadMemory, mergeRecords, searchMemory, writeMemory } from "./memory.js";
 import { semanticSearch } from "./embeddings.js";
-import { UsageMeter, tenantForKey, tenantMayAccess, type Tenant } from "./tenants.js";
+import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants.js";
+import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
+import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -24,21 +26,36 @@ import { UsageMeter, tenantForKey, tenantMayAccess, type Tenant } from "./tenant
  *   POST /v1/repos/:repo/webhook                — GitHub webhook (push/issues/PR):
  *                                                 verifies X-Hub-Signature-256 and
  *                                                 refreshes memory + context files
+ *   GET  /v1/app/manifest                       — GitHub App manifest (one-click create)
+ *   POST /v1/app/webhook                         — GitHub App events (installation…):
+ *                                                 HMAC-verified; classified for the log
+ *   POST /v1/stripe/webhook                      — Stripe subscription events: verifies
+ *                                                 the signature and flips a tenant's plan
  *
  * When exactly one repo is registered, the unprefixed shortcuts keep working.
  *
  * Auth:
  *  - { apiKey }: single shared key on every route except /v1/health (Bearer
- *    or x-api-key). The webhook route authenticates via HMAC instead.
- *  - { tenants }: per-tenant keys with repo scopes and daily quotas — the
- *    seed of the hosted micro-SaaS (metering via /v1/usage).
+ *    or x-api-key). Webhook routes authenticate via their own signatures.
+ *  - { tenants } / { tenantStore }: per-tenant keys with repo scopes and
+ *    plan-based quotas — the hosted micro-SaaS (metering via /v1/usage,
+ *    billing via Stripe).
  */
 
 export interface ServerOptions {
   apiKey?: string;
+  /** Plain tenant list (wrapped in a non-persistent store internally). */
   tenants?: Tenant[];
-  /** Shared secret for GitHub webhook signature verification. */
+  /** Mutable, optionally file-backed tenant store (takes precedence). */
+  tenantStore?: TenantStore;
+  /** Shared secret for GitHub webhook + App signature verification. */
   webhookSecret?: string;
+  /** Stripe endpoint signing secret; enables POST /v1/stripe/webhook. */
+  stripeSecret?: string;
+  /** Stripe Price ID → plan id map (from STRIPE_PRICE_MAP). */
+  stripePriceMap?: Record<string, PlanId>;
+  /** Public base URL, used to build the GitHub App manifest. */
+  appBaseUrl?: string;
 }
 
 export const CONTEXT_FILES: Record<string, string> = {
@@ -157,7 +174,9 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
   const repos = toRepoMap(rootOrRepos);
   const names = Object.keys(repos);
   const soleName = names.length === 1 ? names[0] : null;
-  const tenants = opts.tenants ?? [];
+  const store = opts.tenantStore ?? new TenantStore(opts.tenants ?? []);
+  const tenantsEnabled = store.all().length > 0;
+  const priceMap = opts.stripePriceMap ?? {};
   const meter = new UsageMeter();
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -166,6 +185,78 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
     if (path === "/v1/health" || path === "/") {
       sendJson(res, 200, { ok: true, service: "mindset-ctx", repos: names });
+      return;
+    }
+
+    // GitHub App manifest — public, for one-click App creation.
+    if (path === "/v1/app/manifest") {
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      sendJson(res, 200, buildAppManifest(base));
+      return;
+    }
+
+    // GitHub App lifecycle webhook (installation / installation_repositories).
+    if (path === "/v1/app/webhook") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "app webhook expects POST" });
+        return;
+      }
+      if (!opts.webhookSecret) {
+        sendJson(res, 503, { error: "webhook secret not configured" });
+        return;
+      }
+      const body = await readBody(req);
+      if (!validSignature(opts.webhookSecret, body, req.headers["x-hub-signature-256"] as string | undefined)) {
+        sendJson(res, 401, { error: "invalid webhook signature" });
+        return;
+      }
+      const event = String(req.headers["x-github-event"] ?? "unknown");
+      if (event === "ping") {
+        sendJson(res, 200, { ok: true, event, action: "pong" });
+        return;
+      }
+      let payload: AppInstallationEvent;
+      try {
+        payload = JSON.parse(body.toString("utf8")) as AppInstallationEvent;
+      } catch {
+        sendJson(res, 400, { error: "invalid JSON payload" });
+        return;
+      }
+      const outcome = classifyAppEvent(event, payload);
+      sendJson(res, 200, { ok: true, event, outcome });
+      return;
+    }
+
+    // Stripe subscription webhook — flips a tenant's plan on billing changes.
+    if (path === "/v1/stripe/webhook") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "stripe webhook expects POST" });
+        return;
+      }
+      if (!opts.stripeSecret) {
+        sendJson(res, 503, { error: "stripe secret not configured — set --stripe-secret or CTX_STRIPE_SECRET" });
+        return;
+      }
+      const body = await readBody(req);
+      const raw = body.toString("utf8");
+      if (!verifyStripeSignature(raw, req.headers["stripe-signature"] as string | undefined, opts.stripeSecret)) {
+        sendJson(res, 400, { error: "invalid stripe signature" });
+        return;
+      }
+      let event;
+      try {
+        event = JSON.parse(raw) as Parameters<typeof resolveSubscriptionEvent>[0];
+      } catch {
+        sendJson(res, 400, { error: "invalid JSON payload" });
+        return;
+      }
+      const outcome = resolveSubscriptionEvent(event, priceMap);
+      if (outcome.action === "set-plan" || outcome.action === "downgrade") {
+        const applied = store.setPlan(outcome.tenantKey, outcome.plan);
+        sendJson(res, 200, { ok: true, ...outcome, applied });
+      } else {
+        sendJson(res, 200, { ok: true, ...outcome });
+      }
       return;
     }
 
@@ -212,8 +303,8 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
     // Authentication + authorization.
     let tenant: Tenant | null = null;
-    if (tenants.length > 0) {
-      tenant = tenantForKey(tenants, requestKey(req));
+    if (tenantsEnabled) {
+      tenant = store.get(requestKey(req));
       if (!tenant) {
         sendJson(res, 401, { error: "unauthorized — pass a tenant key via Authorization: Bearer <key> or x-api-key" });
         return;
