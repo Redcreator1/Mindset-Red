@@ -6,7 +6,7 @@ Thanks for contributing! This guide applies to humans **and** AI agents.
 
 ## Workflow
 
-1. Fork / branch from `main`.
+1. Fork / branch from `claude/verify-repo-empty-7znfbf`.
 2. Make your change with tests where behavior changes.
 3. Run `npm test` and make sure it passes.
 4. Open a pull request with a clear description of **what** and **why**.

@@ -91,7 +91,7 @@ test("tenants: scoped keys, quotas and usage metering", async () => {
   const betaRepo = makeRepo("beta");
   const tenants: Tenant[] = [
     { key: "sk-alice", name: "alice", repos: ["alpha"], dailyLimit: 3 },
-    { key: "sk-admin", name: "admin", repos: "*" },
+    { key: "sk-admin", name: "admin", repos: "*", plan: "enterprise" }, // enterprise = unlimited
   ];
   const server = createContextServer({ alpha: alphaRepo, beta: betaRepo }, { tenants });
   const base = await listen(server);
