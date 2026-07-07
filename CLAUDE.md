@@ -8,11 +8,17 @@
 
 Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub repo, with a memory layer over its history.
 
-**Stack:** TypeScript (7 files), JSON (3 files), Markdown (1 file) · TypeScript
+**Stack:** TypeScript (10 files), Markdown (6 files), JSON (3 files), YAML (2 files) · TypeScript
 
 ## Repository layout
 
+- `.context/`
+- `.github/` — GitHub config (CI, templates)
+- `docs/` — documentation
 - `src/` — main source code
+- `AGENTS.md`
+- `CLAUDE.md`
+- `CONTRIBUTING.md`
 - `package-lock.json`
 - `package.json`
 - `README.md`
@@ -30,7 +36,7 @@ Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.
 ## Working conventions for agents
 
 - Run the test suite before committing (`npm test`).
-- No CI configured yet — verify changes locally.
+- CI runs on every push; keep it green.
 - Match the style of surrounding code; do not introduce new dependencies without a clear reason.
 - Keep generated context fresh: after structural changes, re-run `ctx generate`.
 

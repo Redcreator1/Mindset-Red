@@ -31,8 +31,13 @@ node dist/cli.js generate [path]
 # Indexer l'historique git dans le memory layer (.context/memory.jsonl)
 node dist/cli.js index [path] --limit 500
 
-# Servir le contexte en HTTP pour les outils IA
-node dist/cli.js serve [path] --port 4870
+# … et y ajouter les PRs, issues et discussions via l'API GitHub
+# (owner/repo déduit du remote origin, ou --repo owner/name ;
+#  GITHUB_TOKEN pour les repos privés / plus de rate limit)
+node dist/cli.js index [path] --github
+
+# Servir un ou plusieurs repos en HTTP pour les outils IA
+node dist/cli.js serve [path ...] --port 4870 --api-key SECRET
 
 # Voir l'analyse brute du repo (JSON)
 node dist/cli.js analyze [path]
@@ -42,10 +47,18 @@ node dist/cli.js analyze [path]
 
 | Route | Description |
 | --- | --- |
-| `GET /v1/health` | Liveness |
-| `GET /v1/analysis` | Analyse structurée du repo (JSON) |
-| `GET /v1/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
-| `GET /v1/memory/search?q=…&limit=…` | Recherche par mots-clés dans le memory layer |
+| `GET /v1/health` | Liveness (jamais protégée) |
+| `GET /v1/repos` | Repos enregistrés |
+| `GET /v1/repos/:repo/analysis` | Analyse structurée du repo (JSON) |
+| `GET /v1/repos/:repo/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
+| `GET /v1/repos/:repo/memory/search?q=…&limit=…` | Recherche **classée par pertinence (BM25)** dans le memory layer |
+
+Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
+`/v1/context/claude`, `/v1/memory/search`) restent disponibles.
+
+**Auth** : `--api-key` (ou env `CTX_API_KEY`) exige
+`Authorization: Bearer <clé>` ou `x-api-key: <clé>` sur toutes les routes sauf
+`/v1/health`.
 
 ### Édition manuelle préservée
 
@@ -64,8 +77,11 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 
 ## Roadmap
 
-- [x] v0 — analyse de repo, génération des 5 fichiers de contexte, memory layer (commits), API HTTP, CLI
-- [ ] Ingestion GitHub API : PRs, issues, discussions dans le memory layer
-- [ ] Recherche sémantique (embeddings) derrière la même API
-- [ ] GitHub App / Action : régénération automatique à chaque push
-- [ ] Mode hébergé multi-repos (micro-SaaS)
+- [x] v0.1 — analyse de repo, génération des 5 fichiers de contexte, memory layer (commits), API HTTP, CLI
+- [x] v0.2 — ingestion GitHub API (PRs, issues, discussions) dans le memory layer
+- [x] v0.2 — recherche classée par pertinence (BM25) derrière la même API
+- [x] v0.2 — GitHub Actions : CI (Node 20/22) + régénération auto du contexte à chaque push sur `main`
+- [x] v0.2 — serveur multi-repos + auth par clé API (graine du mode hébergé)
+- [ ] Recherche sémantique par embeddings (pluggable derrière `searchMemory`)
+- [ ] GitHub App : installation en un clic, webhooks PR/issue temps réel
+- [ ] Mode hébergé multi-tenants complet (micro-SaaS : comptes, quotas, facturation)

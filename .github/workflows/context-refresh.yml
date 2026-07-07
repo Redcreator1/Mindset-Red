@@ -1,0 +1,33 @@
+# Keeps the AI context files in sync with the code: on every push to main,
+# regenerate them with the tool itself and commit only if something changed.
+name: Refresh context
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node dist/cli.js generate .
+      - name: Commit refreshed context
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CLAUDE.md AGENTS.md CONTRIBUTING.md docs/ARCHITECTURE.md .context/prompts.md
+          git diff --cached --quiet || {
+            git commit -m "chore: refresh generated context [skip ci]"
+            git push
+          }
