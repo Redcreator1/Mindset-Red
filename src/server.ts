@@ -11,6 +11,8 @@ import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
 import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
+import { createCheckoutSession, priceForPlan } from "./checkout.js";
+import { PLANS } from "./billing.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -59,6 +61,11 @@ export interface ServerOptions {
   stripeSecret?: string;
   /** Stripe Price ID → plan id map (from STRIPE_PRICE_MAP). */
   stripePriceMap?: Record<string, PlanId>;
+  /** Stripe secret key (sk_...); enables POST /v1/checkout. */
+  stripeApiKey?: string;
+  /** Where Stripe returns the buyer after checkout. */
+  checkoutSuccessUrl?: string;
+  checkoutCancelUrl?: string;
   /** Public base URL, used to build the GitHub App manifest. */
   appBaseUrl?: string;
 }
@@ -332,6 +339,41 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         return;
       }
       sendJson(res, 200, meter.report(tenant));
+      return;
+    }
+
+    // Checkout: the calling tenant requests an upgrade → Stripe payment URL.
+    if (path === "/v1/checkout") {
+      if (!tenant) {
+        sendJson(res, 404, { error: "checkout is only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!opts.stripeApiKey) {
+        sendJson(res, 503, { error: "checkout not configured — set --stripe-api-key or CTX_STRIPE_API_KEY" });
+        return;
+      }
+      const plan = (url.searchParams.get("plan") ?? "pro") as PlanId;
+      if (!PLANS[plan]) {
+        sendJson(res, 400, { error: `unknown plan '${plan}'`, plans: Object.keys(PLANS) });
+        return;
+      }
+      const priceId = priceForPlan(plan, priceMap);
+      if (!priceId) {
+        sendJson(res, 400, { error: `no Stripe price mapped for plan '${plan}' (free plan needs no checkout)` });
+        return;
+      }
+      try {
+        const session = await createCheckoutSession({
+          secretKey: opts.stripeApiKey,
+          priceId,
+          tenantKey: tenant.key,
+          successUrl: opts.checkoutSuccessUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+          cancelUrl: opts.checkoutCancelUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+        });
+        sendJson(res, 200, { plan, checkoutUrl: session.url, sessionId: session.id });
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 

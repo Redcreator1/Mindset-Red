@@ -12,10 +12,11 @@ import { hasEmbeddingKey, indexEmbeddings, semanticSearch } from "./embeddings.j
 import { hybridSearch } from "./hybrid.js";
 import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
-import { loadPriceMap } from "./billing.js";
+import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, installUrlHint } from "./githubapp.js";
+import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -54,6 +55,11 @@ Usage:
   ctx app manifest [--base-url URL]
                                Print the GitHub App manifest (JSON) for
                                one-click App creation
+  ctx checkout --plan pro [--key KEY] [--success URL] [--cancel URL]
+                               Mint a tenant key (unless --key is given) and
+                               create a Stripe Checkout link to subscribe it.
+                               Needs CTX_STRIPE_API_KEY + STRIPE_PRICE_MAP.
+                               This is the "collect the first euro" front door
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -179,6 +185,7 @@ function cmdServe(argv: string[]): void {
   const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
   const webhookSecret = arg("--webhook-secret", argv) ?? process.env.CTX_WEBHOOK_SECRET;
   const stripeSecret = arg("--stripe-secret", argv) ?? process.env.CTX_STRIPE_SECRET;
+  const stripeApiKey = arg("--stripe-api-key", argv) ?? process.env.CTX_STRIPE_API_KEY;
   const stripePriceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
   const appBaseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL;
   const tenantsFile = arg("--tenants", argv);
@@ -187,7 +194,7 @@ function cmdServe(argv: string[]): void {
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripePriceMap, appBaseUrl }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl }).listen(port, () => {
     const names = Object.keys(repos);
     const authLabel = tenantStore ? ` [${tenantStore.all().length} tenant(s)]` : apiKey ? " [api-key required]" : "";
     const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");
@@ -205,6 +212,35 @@ function cmdServe(argv: string[]): void {
       console.log(`  http://localhost:${port}/v1/repos/${names[0]}/memory/search?q=fix`);
     }
   });
+}
+
+async function cmdCheckout(argv: string[]): Promise<void> {
+  const secretKey = process.env.CTX_STRIPE_API_KEY;
+  if (!secretKey) {
+    console.error("ctx checkout needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).");
+    process.exit(1);
+  }
+  const priceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
+  const plan = (arg("--plan", argv) ?? "pro") as PlanId;
+  const priceId = priceForPlan(plan, priceMap);
+  if (!priceId) {
+    console.error(`No Stripe price mapped for plan '${plan}'. Set STRIPE_PRICE_MAP, e.g. '{"price_123":"pro"}'.`);
+    process.exit(1);
+  }
+  const tenantKey = arg("--key", argv) ?? newTenantKey();
+  const base = process.env.CTX_BASE_URL ?? "https://example.com";
+  const session = await createCheckoutSession({
+    secretKey,
+    priceId,
+    tenantKey,
+    successUrl: arg("--success", argv) ?? `${base}/v1/dashboard`,
+    cancelUrl: arg("--cancel", argv) ?? `${base}/v1/dashboard`,
+  });
+  console.log(`Tenant key : ${tenantKey}`);
+  console.log(`Plan       : ${plan}`);
+  console.log(`Pay here   : ${session.url}`);
+  console.error(`\nAdd this tenant to ctx.tenants.json (plan flips to '${plan}' automatically once paid):`);
+  console.error(JSON.stringify({ key: tenantKey, name: "new-customer", repos: "*", plan: "free" }, null, 2));
 }
 
 function cmdApp(argv: string[]): void {
@@ -237,6 +273,9 @@ switch (command) {
     break;
   case "app":
     cmdApp(rest);
+    break;
+  case "checkout":
+    await cmdCheckout(rest);
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));

@@ -58,6 +58,10 @@ node dist/cli.js serve [path] --webhook-secret SECRET
 # GitHub App : imprime le manifest pour une création en un clic
 node dist/cli.js app manifest --base-url https://mon-hote.example.com
 
+# Encaisser : génère une clé tenant + un lien de paiement Stripe
+CTX_STRIPE_API_KEY=sk_live_... STRIPE_PRICE_MAP='{"price_123":"pro"}' \
+  node dist/cli.js checkout --plan pro
+
 # Facturation Stripe : les webhooks d'abonnement font basculer le plan
 # d'un tenant (free/pro/team/enterprise → quotas), persisté sur disque
 STRIPE_PRICE_MAP='{"price_123":"pro"}' \
@@ -106,6 +110,7 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) |
+| `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) |
 | `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant |
 
 Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
@@ -135,6 +140,25 @@ Chaque fichier généré contient un marqueur `ctx:manual`. Tout ce que vous
 écrivez **en dessous** est conservé lors des régénérations — le haut du fichier
 reste toujours synchronisé avec la réalité du code.
 
+## Repos privés — comment les devs l'utilisent
+
+**Le mode self-hosted est fait pour les repos privés** : l'outil lit le clone
+local (le tien), donc **ton code privé ne quitte jamais ta machine** — c'est un
+argument de confidentialité, pas une limite.
+
+```bash
+# 1. Dans ton repo privé déjà cloné
+node /chemin/dist/cli.js generate .     # génère le contexte
+node /chemin/dist/cli.js index .        # indexe la mémoire
+
+# 2. Branche-le dans Claude Code / Cursor via MCP (local, rien ne sort)
+claude mcp add mindset-ctx -- node /chemin/dist/cli.js mcp /chemin/repo/prive
+```
+
+Pour la mémoire des PRs/issues d'un repo privé, `ctx index --github` utilise ton
+`GITHUB_TOKEN` personnel (scope `repo`). En **mode hébergé**, la lecture des repos
+privés passera par le token d'installation de la GitHub App (voir roadmap).
+
 ## Développement
 
 ```bash
@@ -160,5 +184,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.5 — **facturation Stripe** : `POST /v1/stripe/webhook` (signature vérifiée sans SDK) fait basculer le plan d'un tenant ; plans → quotas, store de tenants persistant
 - [x] v0.6 — **recherche hybride** BM25 + embeddings fusionnés par Reciprocal Rank Fusion (`mode=hybrid`, `ctx search --hybrid`)
 - [x] v0.6 — **dashboard web** auto-porté (`/v1/dashboard`) : repos, tenants, plans, quotas et mémoire, scopé par tenant
-- [ ] Support GitLab / Bitbucket
-- [ ] SSO / RBAC pour le palier Team/Enterprise
+- [x] v0.7 — **checkout Stripe** : `ctx checkout` / `GET /v1/checkout` créent un lien de paiement (clé tenant estampée dans les métadonnées) — la porte d'entrée « premier euro »
+- [ ] Déploiement hébergé (URL publique) + provisioning self-service des tenants
+- [ ] Token d'installation GitHub App (lecture des repos privés en mode hébergé)
+- [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
