@@ -41,8 +41,9 @@ node dist/cli.js index [path] --github
 # (Voyage AI, le partenaire embeddings d'Anthropic ; VOYAGE_API_KEY requis)
 node dist/cli.js index [path] --embed
 
-# Chercher dans la mémoire depuis le terminal (BM25, ou --semantic)
-node dist/cli.js search "payment retry" --repo-path [path] --semantic
+# Chercher dans la mémoire depuis le terminal
+# (BM25 par défaut, --semantic pour les embeddings, --hybrid pour la fusion RRF)
+node dist/cli.js search "payment retry" --repo-path [path] --hybrid
 
 # Servir un ou plusieurs repos en HTTP pour les outils IA
 node dist/cli.js serve [path ...] --port 4870 --api-key SECRET
@@ -100,7 +101,8 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `GET /v1/usage` | Consommation du tenant appelant (mode `--tenants`) |
 | `GET /v1/repos/:repo/analysis` | Analyse structurée du repo (JSON) |
 | `GET /v1/repos/:repo/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
-| `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut) ou **sémantique** (`mode=semantic`, embeddings Voyage) |
+| `GET /v1/dashboard` · `/v1/dashboard/data` | Dashboard web (HTML/JSON) : repos, tenants, plans, quotas, mémoire — scopé par tenant |
+| `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut), **sémantique** (`mode=semantic`) ou **hybride** (`mode=hybrid`, fusion RRF) |
 | `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) |
@@ -156,5 +158,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.4 — **multi-tenants** : clés par client, scopes par repo, quotas journaliers, métering `/v1/usage`
 - [x] v0.5 — **GitHub App packagée** : manifest servi (`/v1/app/manifest`, création un clic) + webhook d'installation (`/v1/app/webhook`, HMAC vérifiée, cycle de vie classifié)
 - [x] v0.5 — **facturation Stripe** : `POST /v1/stripe/webhook` (signature vérifiée sans SDK) fait basculer le plan d'un tenant ; plans → quotas, store de tenants persistant
-- [ ] Recherche hybride BM25 + embeddings avec re-ranking
-- [ ] Dashboard web (gestion des tenants, visualisation de la mémoire)
+- [x] v0.6 — **recherche hybride** BM25 + embeddings fusionnés par Reciprocal Rank Fusion (`mode=hybrid`, `ctx search --hybrid`)
+- [x] v0.6 — **dashboard web** auto-porté (`/v1/dashboard`) : repos, tenants, plans, quotas et mémoire, scopé par tenant
+- [ ] Support GitLab / Bitbucket
+- [ ] SSO / RBAC pour le palier Team/Enterprise

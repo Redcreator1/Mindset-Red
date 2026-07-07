@@ -9,12 +9,13 @@ import { createContextServer } from "./server.js";
 import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
 import { hasEmbeddingKey, indexEmbeddings, semanticSearch } from "./embeddings.js";
+import { hybridSearch } from "./hybrid.js";
 import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
 import { loadPriceMap } from "./billing.js";
 import { buildAppManifest, installUrlHint } from "./githubapp.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -34,9 +35,10 @@ Usage:
                                private repos / higher rate limits). With
                                --embed (requires VOYAGE_API_KEY), also compute
                                embeddings for semantic search
-  ctx search <query> [--repo-path path] [--semantic] [--limit N]
+  ctx search <query> [--repo-path path] [--semantic|--hybrid] [--limit N]
                                Search the memory layer from the terminal.
-                               Default is BM25; --semantic uses embeddings
+                               Default is BM25; --semantic uses embeddings;
+                               --hybrid fuses both with Reciprocal Rank Fusion
   ctx serve [path ...] [--port N] [--api-key KEY] [--tenants FILE]
             [--webhook-secret S] [--stripe-secret S] [--base-url URL]
                                Serve one or more repos over HTTP for AI tools.
@@ -63,7 +65,7 @@ Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic", "--hybrid"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -151,6 +153,15 @@ async function cmdSearch(argv: string[]): Promise<void> {
   const root = resolve(arg("--repo-path", argv) ?? ".");
   const limit = Number(arg("--limit", argv) ?? 10) || 10;
   const records = loadMemory(root);
+  if (argv.includes("--hybrid")) {
+    const hits = await hybridSearch(root, records, query, limit);
+    if (hits.length === 0) return void console.log("No matching records.");
+    for (const h of hits) {
+      const ranks = `L${h.lexicalRank ?? "–"}/S${h.semanticRank ?? "–"}`;
+      console.log(`[${h.record.type}] ${h.record.title}  (${ranks}, ${h.record.date.slice(0, 10)})`);
+    }
+    return;
+  }
   const hits = argv.includes("--semantic")
     ? await semanticSearch(root, records, query, limit)
     : searchMemory(records, query, limit);
@@ -182,6 +193,7 @@ function cmdServe(argv: string[]): void {
     const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");
     console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${authLabel}${flags ? ` [${flags}]` : ""}`);
     console.log(`  http://localhost:${port}/v1/health`);
+    console.log(`  http://localhost:${port}/v1/dashboard`);
     console.log(`  http://localhost:${port}/v1/repos`);
     console.log(`  http://localhost:${port}/v1/app/manifest`);
     if (stripeSecret) console.log(`  http://localhost:${port}/v1/stripe/webhook  (POST)`);

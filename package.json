@@ -1,6 +1,6 @@
 {
   "name": "mindset-ctx",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub repo, with a memory layer over its history.",
   "type": "module",
   "license": "MIT",

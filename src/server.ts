@@ -6,9 +6,11 @@ import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, loadMemory, mergeRecords, searchMemory, writeMemory } from "./memory.js";
 import { semanticSearch } from "./embeddings.js";
+import { hybridSearch } from "./hybrid.js";
 import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants.js";
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
+import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -20,9 +22,12 @@ import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from ".
  *   GET  /v1/usage                              — calling tenant's quota usage (tenants mode)
  *   GET  /v1/repos/:repo/analysis               — structured repo analysis (JSON)
  *   GET  /v1/repos/:repo/context/:name          — a context file (claude, agents, …)
- *   GET  /v1/repos/:repo/memory/search?q=&mode= — memory search (BM25; mode=semantic
- *                                                 uses Voyage embeddings, needs
- *                                                 VOYAGE_API_KEY + `ctx index --embed`)
+ *   GET  /v1/dashboard                          — HTML ops dashboard (repos, tenants, quotas)
+ *   GET  /v1/dashboard/data                      — the same as JSON
+ *   GET  /v1/repos/:repo/memory/search?q=&mode= — memory search. mode=lexical (BM25,
+ *                                                 default) | semantic (Voyage embeddings)
+ *                                                 | hybrid (RRF fusion of both). semantic
+ *                                                 and hybrid need `ctx index --embed`.
  *   POST /v1/repos/:repo/webhook                — GitHub webhook (push/issues/PR):
  *                                                 verifies X-Hub-Signature-256 and
  *                                                 refreshes memory + context files
@@ -154,16 +159,19 @@ async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerR
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20) || 20, 100);
     const mode = url.searchParams.get("mode") ?? "lexical";
     const records = loadMemory(root);
-    if (mode === "semantic") {
-      try {
+    try {
+      if (mode === "semantic") {
         const results = await semanticSearch(root, records, q, limit);
         sendJson(res, 200, { query: q, mode, total: records.length, results });
-      } catch (err) {
-        sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+      } else if (mode === "hybrid") {
+        const results = await hybridSearch(root, records, q, limit);
+        sendJson(res, 200, { query: q, mode, total: records.length, results });
+      } else {
+        sendJson(res, 200, { query: q, mode: "lexical", total: records.length, results: searchMemory(records, q, limit) });
       }
-      return;
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
     }
-    sendJson(res, 200, { query: q, mode: "lexical", total: records.length, results: searchMemory(records, q, limit) });
     return;
   }
 
@@ -327,6 +335,28 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Dashboard: HTML shell at /v1/dashboard, JSON at /v1/dashboard/data.
+    // Scoped to the repos/tenants the caller may see.
+    if (path === "/v1/dashboard" || path === "/v1/dashboard/data") {
+      const visibleRepos = (tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names).map((name) =>
+        summarizeRecords(name, loadMemory(repos[name])),
+      );
+      // A wildcard-scope tenant is an admin and sees every tenant; a scoped
+      // tenant sees only itself; keyless (shared-key) mode sees all.
+      const visibleTenants =
+        tenant && tenant.repos !== "*"
+          ? [summarizeTenant(tenant, meter.report(tenant).requests)]
+          : store.all().map((t) => summarizeTenant(t, meter.report(t).requests));
+      const data: DashboardData = { service: "mindset-ctx", repos: visibleRepos, tenants: visibleTenants };
+      if (path === "/v1/dashboard/data") {
+        sendJson(res, 200, data);
+      } else {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(renderDashboard(data));
+      }
+      return;
+    }
+
     if (path === "/v1/repos") {
       const visible = tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names;
       sendJson(res, 200, { repos: visible.map((name) => ({ name, root: repos[name] })) });
@@ -362,9 +392,9 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     sendJson(res, 404, {
       error: "not found",
       routes: [
-        "/v1/health", "/v1/repos", "/v1/usage",
+        "/v1/health", "/v1/repos", "/v1/usage", "/v1/dashboard",
         "/v1/repos/:repo/analysis", "/v1/repos/:repo/context/:name",
-        "/v1/repos/:repo/memory/search?q=", "POST /v1/repos/:repo/webhook",
+        "/v1/repos/:repo/memory/search?q=&mode=hybrid", "POST /v1/repos/:repo/webhook",
       ],
     });
   }
