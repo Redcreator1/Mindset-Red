@@ -72,17 +72,53 @@ export function mergeRecords(existing: MemoryRecord[], incoming: MemoryRecord[])
   return [...byKey.values()];
 }
 
+function tokenize(text: string): string[] {
+  return text.toLowerCase().split(/[^a-z0-9_]+/).filter((t) => t.length > 1);
+}
+
+function recordText(r: MemoryRecord): string {
+  // Title weighted 3x: a term in the title says more than one buried in a diff list.
+  return `${r.title} ${r.title} ${r.title} ${r.body} ${r.author} ${r.files.join(" ")}`;
+}
+
 /**
- * Keyword search over memory records. Every whitespace-separated term must
- * match (AND semantics) against title, body, author or touched files.
- * Simple on purpose: embeddings/BM25 come later behind the same signature.
+ * BM25-ranked search over memory records (k1=1.5, b=0.75). A record matches
+ * when at least one query term appears in its title, body, author or touched
+ * files; results are ordered by relevance. Corpus sizes here (hundreds to a
+ * few thousand records) don't need an inverted index — a linear scan is
+ * instant and keeps the code dependency-free. Embedding-based retrieval can
+ * later slot in behind this same signature.
  */
 export function searchMemory(records: MemoryRecord[], query: string, limit = 20): MemoryRecord[] {
-  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const terms = [...new Set(tokenize(query))];
   if (terms.length === 0) return records.slice(0, limit);
-  const hits = records.filter((r) => {
-    const haystack = `${r.title}\n${r.body}\n${r.author}\n${r.files.join("\n")}`.toLowerCase();
-    return terms.every((t) => haystack.includes(t));
-  });
-  return hits.slice(0, limit);
+
+  const k1 = 1.5;
+  const b = 0.75;
+  const docs = records.map((r) => tokenize(recordText(r)));
+  const n = docs.length;
+  const avgLen = docs.reduce((sum, d) => sum + d.length, 0) / Math.max(n, 1);
+
+  const docFreq = new Map<string, number>();
+  for (const term of terms) {
+    docFreq.set(term, docs.reduce((df, d) => df + (d.includes(term) ? 1 : 0), 0));
+  }
+
+  const scored: { record: MemoryRecord; score: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const termFreq = new Map<string, number>();
+    for (const tok of docs[i]) termFreq.set(tok, (termFreq.get(tok) ?? 0) + 1);
+    let score = 0;
+    for (const term of terms) {
+      const f = termFreq.get(term) ?? 0;
+      if (f === 0) continue;
+      const df = docFreq.get(term) ?? 0;
+      const idf = Math.log(1 + (n - df + 0.5) / (df + 0.5));
+      score += idf * ((f * (k1 + 1)) / (f + k1 * (1 - b + b * (docs[i].length / avgLen))));
+    }
+    if (score > 0) scored.push({ record: records[i], score });
+  }
+
+  scored.sort((a, b2) => b2.score - a.score);
+  return scored.slice(0, limit).map((s) => s.record);
 }

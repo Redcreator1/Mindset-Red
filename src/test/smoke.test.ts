@@ -84,6 +84,21 @@ test("memory layer indexes commits and searches them", () => {
   assert.equal(searchMemory(loaded, "nonexistent-term").length, 0);
 });
 
+test("searchMemory ranks by BM25 relevance", () => {
+  const mk = (id: string, title: string, body = ""): import("../types.js").MemoryRecord => ({
+    type: "commit", id, title, body, author: "dev", date: "2026-01-01", files: [],
+  });
+  const records = [
+    mk("1", "refactor payment gateway", "touch retry logic in payment flow"),
+    mk("2", "payment retry: exponential backoff for payment gateway timeouts"),
+    mk("3", "update readme"),
+  ];
+  const hits = searchMemory(records, "payment retry");
+  assert.equal(hits.length, 2, "readme commit must not match");
+  assert.equal(hits[0].id, "2", "record matching both terms most densely ranks first");
+  assert.equal(searchMemory(records, "").length, 3, "empty query returns everything up to limit");
+});
+
 test("context server serves analysis, context files and memory search", async () => {
   const dir = makeFixtureRepo();
   const a = analyzeRepo(dir);
