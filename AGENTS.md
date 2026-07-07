@@ -7,7 +7,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot Workspace, …) 
 ## Golden rules
 
 1. Read `CLAUDE.md` first; it is the canonical project context.
-2. Never push directly to `claude/verify-repo-empty-7znfbf` — work on a feature branch and open a PR.
+2. Never push directly to `main` — work on a feature branch and open a PR.
 3. All changes must pass `npm test`.
 4. Prefer small, reviewable diffs over sweeping refactors.
 5. Consult the memory layer (`.context/memory.jsonl` or `GET /v1/memory/search?q=…`) before re-deciding something a past PR already settled.
@@ -17,7 +17,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot Workspace, …) 
 | Command | What it does |
 | --- | --- |
 | `npm run build` | `tsc` |
-| `npm run test` | `npm run build && node --test "dist/test/**/*.test.js"` |
+| `npm run test` | `npm run build && node --test dist/test/*.test.js` |
 | `npm run dev` | `tsc --watch` |
 | `npm run ctx` | `npm run build && node dist/cli.js` |
 

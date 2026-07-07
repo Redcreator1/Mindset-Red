@@ -29,7 +29,7 @@ Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.
 | Command | What it does |
 | --- | --- |
 | `npm run build` | `tsc` |
-| `npm run test` | `npm run build && node --test "dist/test/**/*.test.js"` |
+| `npm run test` | `npm run build && node --test dist/test/*.test.js` |
 | `npm run dev` | `tsc --watch` |
 | `npm run ctx` | `npm run build && node dist/cli.js` |
 
