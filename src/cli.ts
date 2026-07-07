@@ -6,13 +6,20 @@ import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, writeMemory, mergeRecords, MEMORY_PATH } from "./memory.js";
 import { fetchGitHubMemory, parseRepoFromRemote } from "./github.js";
 import { createContextServer } from "./server.js";
+import { generateNarrative, hasApiKey } from "./ai.js";
+import { runMcpServer } from "./mcp.js";
+
+const VERSION = "0.3.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
 Usage:
-  ctx generate [path]          Analyze the repo and (re)generate context files:
+  ctx generate [path] [--ai]   Analyze the repo and (re)generate context files:
                                CLAUDE.md, AGENTS.md, docs/ARCHITECTURE.md,
-                               CONTRIBUTING.md, .context/prompts.md
+                               CONTRIBUTING.md, .context/prompts.md.
+                               With --ai (requires ANTHROPIC_API_KEY), Claude
+                               writes a narrative overview into CLAUDE.md and
+                               the architecture doc
   ctx index [path] [--limit N] [--github] [--repo owner/name]
                                Index git history into the memory layer
                                (${MEMORY_PATH}). With --github, also ingest
@@ -26,13 +33,17 @@ Usage:
                                --api-key (or CTX_API_KEY) protects every route
                                except /v1/health
   ctx analyze [path]           Print the raw repo analysis as JSON
+  ctx mcp [path]               Run an MCP (Model Context Protocol) server over
+                               stdio exposing get_context, search_memory and
+                               analyze_repo — for Claude Code, Cursor, etc.
+                               e.g.: claude mcp add ctx -- node dist/cli.js mcp .
   ctx help                     Show this help
 
 Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--ai"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -55,9 +66,20 @@ function targetDir(argv: string[]): string {
   return resolve(positionals(argv)[0] ?? ".");
 }
 
-function cmdGenerate(root: string): void {
+async function cmdGenerate(root: string, argv: string[]): Promise<void> {
   const analysis = analyzeRepo(root);
-  const files = generateAll(analysis);
+
+  let narrative: string | undefined;
+  if (argv.includes("--ai")) {
+    if (!hasApiKey()) {
+      console.error("--ai requires ANTHROPIC_API_KEY to be set.");
+      process.exit(1);
+    }
+    console.log("Asking Claude for a narrative overview…");
+    narrative = await generateNarrative(analysis);
+  }
+
+  const files = generateAll(analysis, narrative);
   for (const file of files) {
     const full = join(root, file.path);
     const existing = existsSync(full) ? readFileSync(full, "utf8") : null;
@@ -118,7 +140,7 @@ const root = targetDir(rest);
 
 switch (command) {
   case "generate":
-    cmdGenerate(root);
+    await cmdGenerate(root, rest);
     break;
   case "index":
     await cmdIndex(root, rest);
@@ -128,6 +150,9 @@ switch (command) {
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));
+    break;
+  case "mcp":
+    runMcpServer(root, VERSION);
     break;
   case "help":
   case undefined:

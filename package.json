@@ -1,6 +1,6 @@
 {
   "name": "mindset-ctx",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub repo, with a memory layer over its history.",
   "type": "module",
   "license": "MIT",
@@ -32,5 +32,8 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0"
   }
 }

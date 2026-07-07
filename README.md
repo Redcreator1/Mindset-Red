@@ -20,7 +20,8 @@ npm install
 npm run build
 ```
 
-Aucune dépendance runtime — juste Node ≥ 20.
+Node ≥ 20. Une seule dépendance runtime : le SDK officiel `@anthropic-ai/sdk`
+(utilisé uniquement par le mode `--ai`, optionnel à l'exécution).
 
 ## Utilisation
 
@@ -39,8 +40,33 @@ node dist/cli.js index [path] --github
 # Servir un ou plusieurs repos en HTTP pour les outils IA
 node dist/cli.js serve [path ...] --port 4870 --api-key SECRET
 
+# Génération enrichie par Claude : une synthèse narrative du projet est
+# rédigée par Claude Opus 4.8 (thinking adaptatif) et injectée dans
+# CLAUDE.md et docs/ARCHITECTURE.md (nécessite ANTHROPIC_API_KEY)
+node dist/cli.js generate [path] --ai
+
 # Voir l'analyse brute du repo (JSON)
 node dist/cli.js analyze [path]
+
+# Serveur MCP (Model Context Protocol) en stdio : Claude Code / Cursor
+# consomment le contexte et la mémoire comme des outils natifs
+node dist/cli.js mcp [path]
+```
+
+### MCP (Model Context Protocol)
+
+`ctx mcp` expose trois outils via le standard MCP :
+
+| Outil | Description |
+| --- | --- |
+| `get_context` | Lit un fichier de contexte (`claude`, `agents`, `architecture`, `contributing`, `prompts`) |
+| `search_memory` | Recherche BM25 dans le memory layer (commits, PRs, issues) |
+| `analyze_repo` | Analyse structurée fraîche du repo |
+
+Enregistrement dans Claude Code :
+
+```bash
+claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/repo
 ```
 
 ### API
@@ -82,6 +108,8 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.2 — recherche classée par pertinence (BM25) derrière la même API
 - [x] v0.2 — GitHub Actions : CI (Node 20/22) + régénération auto du contexte à chaque push sur `main`
 - [x] v0.2 — serveur multi-repos + auth par clé API (graine du mode hébergé)
+- [x] v0.3 — serveur **MCP** (Model Context Protocol) en stdio : le contexte devient des outils natifs pour Claude Code / Cursor
+- [x] v0.3 — génération enrichie par l'**API Claude** (`generate --ai`, SDK officiel, Opus 4.8 + thinking adaptatif)
 - [ ] Recherche sémantique par embeddings (pluggable derrière `searchMemory`)
 - [ ] GitHub App : installation en un clic, webhooks PR/issue temps réel
 - [ ] Mode hébergé multi-tenants complet (micro-SaaS : comptes, quotas, facturation)

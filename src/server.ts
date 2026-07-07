@@ -27,7 +27,7 @@ export interface ServerOptions {
   apiKey?: string;
 }
 
-const CONTEXT_FILES: Record<string, string> = {
+export const CONTEXT_FILES: Record<string, string> = {
   "claude": "CLAUDE.md",
   "agents": "AGENTS.md",
   "architecture": "docs/ARCHITECTURE.md",

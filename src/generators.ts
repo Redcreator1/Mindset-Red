@@ -31,12 +31,12 @@ function layoutList(a: RepoAnalysis): string {
   return a.layout.map((e) => `- \`${e.path}\`${e.note ? ` — ${e.note}` : ""}`).join("\n");
 }
 
-export function generateClaudeMd(a: RepoAnalysis): GeneratedFile {
+export function generateClaudeMd(a: RepoAnalysis, narrative?: string): GeneratedFile {
   const content = `${HEADER(`${a.name} — Claude context`)}
 ${a.description ? `> ${a.description}\n` : ""}
 ## What this project is
 
-${a.description ?? "_Describe the project purpose here (below the manual marker) so agents inherit it._"}
+${narrative ?? a.description ?? "_Describe the project purpose here (below the manual marker) so agents inherit it._"}
 
 **Stack:** ${langSummary(a)}${a.frameworks.length ? ` · ${a.frameworks.join(", ")}` : ""}
 
@@ -87,10 +87,10 @@ ${MANUAL_MARKER}
   return { path: "AGENTS.md", content };
 }
 
-export function generateArchitectureDoc(a: RepoAnalysis): GeneratedFile {
+export function generateArchitectureDoc(a: RepoAnalysis, narrative?: string): GeneratedFile {
   const content = `${HEADER(`${a.name} — Architecture`)}
 _Auto-generated snapshot of the repository structure. Narrative sections live below the manual marker._
-
+${narrative ? `\n## Narrative overview\n\n_Written by Claude from the analysis below (\`ctx generate --ai\`)._\n\n${narrative}\n` : ""}
 ## Overview
 
 - **Name:** ${a.name}
@@ -177,12 +177,12 @@ ${MANUAL_MARKER}
   return { path: ".context/prompts.md", content };
 }
 
-/** Generate every context file for a repo analysis. */
-export function generateAll(a: RepoAnalysis): GeneratedFile[] {
+/** Generate every context file for a repo analysis (narrative: optional AI-written overview). */
+export function generateAll(a: RepoAnalysis, narrative?: string): GeneratedFile[] {
   return [
-    generateClaudeMd(a),
+    generateClaudeMd(a, narrative),
     generateAgentsMd(a),
-    generateArchitectureDoc(a),
+    generateArchitectureDoc(a, narrative),
     generateContributing(a),
     generatePromptTemplates(a),
   ];
