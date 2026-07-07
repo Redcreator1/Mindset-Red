@@ -12,8 +12,8 @@ _Auto-generated snapshot of the repository structure. Narrative sections live be
 - **Frameworks / tooling:** TypeScript
 - **Manifests:** package.json
 - **Tests:** yes · **CI:** yes
-- **Files scanned:** 34
-- **Remote:** http://local_proxy@127.0.0.1:41729/git/Redcreator1/Mindset-Red
+- **Files scanned:** 33
+- **Remote:** https://github.com/Redcreator1/Mindset-Red
 
 ## Top-level layout
 
