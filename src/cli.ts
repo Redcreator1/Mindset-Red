@@ -3,7 +3,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
-import { indexCommits, writeMemory, MEMORY_PATH } from "./memory.js";
+import { indexCommits, writeMemory, mergeRecords, MEMORY_PATH } from "./memory.js";
+import { fetchGitHubMemory, parseRepoFromRemote } from "./github.js";
 import { createContextServer } from "./server.js";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
@@ -12,8 +13,13 @@ Usage:
   ctx generate [path]          Analyze the repo and (re)generate context files:
                                CLAUDE.md, AGENTS.md, docs/ARCHITECTURE.md,
                                CONTRIBUTING.md, .context/prompts.md
-  ctx index [path] [--limit N] Index git history into the memory layer
-                               (${MEMORY_PATH})
+  ctx index [path] [--limit N] [--github] [--repo owner/name]
+                               Index git history into the memory layer
+                               (${MEMORY_PATH}). With --github, also ingest
+                               PRs, issues and discussions via the GitHub API
+                               (owner/name inferred from the origin remote
+                               unless --repo is given; set GITHUB_TOKEN for
+                               private repos / higher rate limits)
   ctx serve [path] [--port N]  Serve the context over HTTP for AI tools
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx help                     Show this help
@@ -21,20 +27,28 @@ Usage:
 Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
+/** Flags that take no value; every other --flag consumes the next token. */
+const BOOLEAN_FLAGS = new Set(["--github"]);
+
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
   return i !== -1 && argv[i + 1] ? argv[i + 1] : undefined;
 }
 
-function targetDir(argv: string[]): string {
+function positionals(argv: string[]): string[] {
+  const out: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     if (argv[i].startsWith("--")) {
-      i++; // skip the flag's value
+      if (!BOOLEAN_FLAGS.has(argv[i])) i++; // skip the flag's value
       continue;
     }
-    return resolve(argv[i]);
+    out.push(argv[i]);
   }
-  return resolve(".");
+  return out;
+}
+
+function targetDir(argv: string[]): string {
+  return resolve(positionals(argv)[0] ?? ".");
 }
 
 function cmdGenerate(root: string): void {
@@ -50,11 +64,27 @@ function cmdGenerate(root: string): void {
   console.log(`\nContext generated for ${analysis.name} (${analysis.fileCount} files scanned).`);
 }
 
-function cmdIndex(root: string, argv: string[]): void {
+async function cmdIndex(root: string, argv: string[]): Promise<void> {
   const limit = Number(arg("--limit", argv) ?? 500) || 500;
-  const records = indexCommits(root, limit);
+  let records = indexCommits(root, limit);
+  console.log(`Indexed ${records.length} commit(s) from git history`);
+
+  if (argv.includes("--github")) {
+    const repoFlag = arg("--repo", argv);
+    const target = repoFlag
+      ? { owner: repoFlag.split("/")[0], repo: repoFlag.split("/")[1] }
+      : parseRepoFromRemote(analyzeRepo(root).remote);
+    if (!target?.owner || !target?.repo) {
+      console.error("Cannot determine GitHub repo: no origin remote found — pass --repo owner/name.");
+      process.exit(1);
+    }
+    const gh = await fetchGitHubMemory(target.owner, target.repo, { limit });
+    console.log(`Fetched ${gh.length} PR/issue/discussion record(s) from ${target.owner}/${target.repo}`);
+    records = mergeRecords(records, gh);
+  }
+
   const path = writeMemory(root, records);
-  console.log(`Indexed ${records.length} record(s) into ${path}`);
+  console.log(`Wrote ${records.length} record(s) to ${path}`);
 }
 
 function cmdServe(root: string, argv: string[]): void {
@@ -76,7 +106,7 @@ switch (command) {
     cmdGenerate(root);
     break;
   case "index":
-    cmdIndex(root, rest);
+    await cmdIndex(root, rest);
     break;
   case "serve":
     cmdServe(root, rest);

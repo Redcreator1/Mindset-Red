@@ -63,6 +63,16 @@ export function loadMemory(root: string): MemoryRecord[] {
 }
 
 /**
+ * Merge two record sets, deduplicating on type+id. Incoming records win,
+ * so a re-index refreshes stale entries in place.
+ */
+export function mergeRecords(existing: MemoryRecord[], incoming: MemoryRecord[]): MemoryRecord[] {
+  const byKey = new Map<string, MemoryRecord>();
+  for (const r of [...existing, ...incoming]) byKey.set(`${r.type}:${r.id}`, r);
+  return [...byKey.values()];
+}
+
+/**
  * Keyword search over memory records. Every whitespace-separated term must
  * match (AND semantics) against title, body, author or touched files.
  * Simple on purpose: embeddings/BM25 come later behind the same signature.
