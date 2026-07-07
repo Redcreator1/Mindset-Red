@@ -8,8 +8,11 @@ import { fetchGitHubMemory, parseRepoFromRemote } from "./github.js";
 import { createContextServer } from "./server.js";
 import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
+import { hasEmbeddingKey, indexEmbeddings, semanticSearch } from "./embeddings.js";
+import { loadMemory, searchMemory } from "./memory.js";
+import { loadTenants } from "./tenants.js";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -20,18 +23,26 @@ Usage:
                                With --ai (requires ANTHROPIC_API_KEY), Claude
                                writes a narrative overview into CLAUDE.md and
                                the architecture doc
-  ctx index [path] [--limit N] [--github] [--repo owner/name]
+  ctx index [path] [--limit N] [--github] [--repo owner/name] [--embed]
                                Index git history into the memory layer
                                (${MEMORY_PATH}). With --github, also ingest
                                PRs, issues and discussions via the GitHub API
                                (owner/name inferred from the origin remote
                                unless --repo is given; set GITHUB_TOKEN for
-                               private repos / higher rate limits)
-  ctx serve [path ...] [--port N] [--api-key KEY]
+                               private repos / higher rate limits). With
+                               --embed (requires VOYAGE_API_KEY), also compute
+                               embeddings for semantic search
+  ctx search <query> [--repo-path path] [--semantic] [--limit N]
+                               Search the memory layer from the terminal.
+                               Default is BM25; --semantic uses embeddings
+  ctx serve [path ...] [--port N] [--api-key KEY] [--tenants FILE] [--webhook-secret S]
                                Serve one or more repos over HTTP for AI tools.
                                Multiple paths enable /v1/repos/:name/… routes;
-                               --api-key (or CTX_API_KEY) protects every route
-                               except /v1/health
+                               --api-key (or CTX_API_KEY) sets a single shared
+                               key; --tenants points to a ctx.tenants.json for
+                               per-tenant keys, repo scopes and daily quotas;
+                               --webhook-secret (or CTX_WEBHOOK_SECRET) enables
+                               POST /v1/repos/:name/webhook for GitHub events
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -43,7 +54,7 @@ Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github", "--ai"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -111,18 +122,52 @@ async function cmdIndex(root: string, argv: string[]): Promise<void> {
 
   const path = writeMemory(root, records);
   console.log(`Wrote ${records.length} record(s) to ${path}`);
+
+  if (argv.includes("--embed")) {
+    if (!hasEmbeddingKey()) {
+      console.error("--embed requires VOYAGE_API_KEY to be set.");
+      process.exit(1);
+    }
+    const embedded = await indexEmbeddings(root, records);
+    console.log(`Embedded ${embedded} new record(s) for semantic search`);
+  }
+}
+
+async function cmdSearch(argv: string[]): Promise<void> {
+  const query = positionals(argv)[0];
+  if (!query) {
+    console.error("Usage: ctx search <query> [--repo-path path] [--semantic] [--limit N]");
+    process.exit(1);
+  }
+  const root = resolve(arg("--repo-path", argv) ?? ".");
+  const limit = Number(arg("--limit", argv) ?? 10) || 10;
+  const records = loadMemory(root);
+  const hits = argv.includes("--semantic")
+    ? await semanticSearch(root, records, query, limit)
+    : searchMemory(records, query, limit);
+  if (hits.length === 0) {
+    console.log("No matching records.");
+    return;
+  }
+  for (const hit of hits) {
+    console.log(`[${hit.type}] ${hit.title}  (${hit.author}, ${hit.date.slice(0, 10)})`);
+  }
 }
 
 function cmdServe(argv: string[]): void {
   const port = Number(arg("--port", argv) ?? 4870) || 4870;
   const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
+  const webhookSecret = arg("--webhook-secret", argv) ?? process.env.CTX_WEBHOOK_SECRET;
+  const tenantsFile = arg("--tenants", argv);
+  const tenants = tenantsFile ? loadTenants(resolve(tenantsFile)) : undefined;
   const paths = positionals(argv).map((p) => resolve(p));
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenants, webhookSecret }).listen(port, () => {
     const names = Object.keys(repos);
-    console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${apiKey ? " [api-key required]" : ""}`);
+    const authLabel = tenants ? ` [${tenants.length} tenant(s)]` : apiKey ? " [api-key required]" : "";
+    console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${authLabel}${webhookSecret ? " [webhooks on]" : ""}`);
     console.log(`  http://localhost:${port}/v1/health`);
     console.log(`  http://localhost:${port}/v1/repos`);
     if (names.length === 1) {
@@ -144,6 +189,9 @@ switch (command) {
     break;
   case "index":
     await cmdIndex(root, rest);
+    break;
+  case "search":
+    await cmdSearch(rest);
     break;
   case "serve":
     cmdServe(rest);
