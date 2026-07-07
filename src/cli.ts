@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, writeMemory, mergeRecords, MEMORY_PATH } from "./memory.js";
@@ -20,7 +20,11 @@ Usage:
                                (owner/name inferred from the origin remote
                                unless --repo is given; set GITHUB_TOKEN for
                                private repos / higher rate limits)
-  ctx serve [path] [--port N]  Serve the context over HTTP for AI tools
+  ctx serve [path ...] [--port N] [--api-key KEY]
+                               Serve one or more repos over HTTP for AI tools.
+                               Multiple paths enable /v1/repos/:name/… routes;
+                               --api-key (or CTX_API_KEY) protects every route
+                               except /v1/health
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx help                     Show this help
 
@@ -87,14 +91,25 @@ async function cmdIndex(root: string, argv: string[]): Promise<void> {
   console.log(`Wrote ${records.length} record(s) to ${path}`);
 }
 
-function cmdServe(root: string, argv: string[]): void {
+function cmdServe(argv: string[]): void {
   const port = Number(arg("--port", argv) ?? 4870) || 4870;
-  createContextServer(root).listen(port, () => {
-    console.log(`mindset-ctx serving ${root}`);
+  const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
+  const paths = positionals(argv).map((p) => resolve(p));
+  if (paths.length === 0) paths.push(resolve("."));
+  const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
+
+  createContextServer(repos, { apiKey }).listen(port, () => {
+    const names = Object.keys(repos);
+    console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${apiKey ? " [api-key required]" : ""}`);
     console.log(`  http://localhost:${port}/v1/health`);
-    console.log(`  http://localhost:${port}/v1/analysis`);
-    console.log(`  http://localhost:${port}/v1/context/claude   (agents|architecture|contributing|prompts)`);
-    console.log(`  http://localhost:${port}/v1/memory/search?q=fix`);
+    console.log(`  http://localhost:${port}/v1/repos`);
+    if (names.length === 1) {
+      console.log(`  http://localhost:${port}/v1/context/claude   (agents|architecture|contributing|prompts)`);
+      console.log(`  http://localhost:${port}/v1/memory/search?q=fix`);
+    } else {
+      console.log(`  http://localhost:${port}/v1/repos/${names[0]}/context/claude`);
+      console.log(`  http://localhost:${port}/v1/repos/${names[0]}/memory/search?q=fix`);
+    }
   });
 }
 
@@ -109,7 +124,7 @@ switch (command) {
     await cmdIndex(root, rest);
     break;
   case "serve":
-    cmdServe(root, rest);
+    cmdServe(rest);
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));
