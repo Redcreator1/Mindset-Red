@@ -185,6 +185,34 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.6 — **recherche hybride** BM25 + embeddings fusionnés par Reciprocal Rank Fusion (`mode=hybrid`, `ctx search --hybrid`)
 - [x] v0.6 — **dashboard web** auto-porté (`/v1/dashboard`) : repos, tenants, plans, quotas et mémoire, scopé par tenant
 - [x] v0.7 — **checkout Stripe** : `ctx checkout` / `GET /v1/checkout` créent un lien de paiement (clé tenant estampée dans les métadonnées) — la porte d'entrée « premier euro »
-- [ ] Déploiement hébergé (URL publique) + provisioning self-service des tenants
+- [x] v0.8 — **page pricing publique** (`/pricing`), **signup self-service** (`/v1/signup?plan=…`) et **`ctx stripe bootstrap`** auto-créent les produits/prix dans Stripe. **Dockerfile + fly.toml** livrés — déploiement zéro-configuration.
 - [ ] Token d'installation GitHub App (lecture des repos privés en mode hébergé)
 - [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
+
+## Déploiement en production (0 → premier euro)
+
+Runbook zéro-configuration pour partir en ligne cette nuit :
+
+```bash
+# 1. Créer les produits/prix Stripe (idempotent)
+export CTX_STRIPE_API_KEY=sk_live_...
+node dist/cli.js stripe bootstrap    # → imprime STRIPE_PRICE_MAP='{...}'
+
+# 2. Déployer sur Fly.io (Dockerfile + fly.toml livrés)
+fly launch --copy-config --dockerfile Dockerfile
+fly volumes create ctx_data --size 1
+fly secrets set CTX_STRIPE_API_KEY=sk_live_... \
+                CTX_STRIPE_SECRET=whsec_... \
+                STRIPE_PRICE_MAP='{"price_...":"pro","price_...":"team"}' \
+                CTX_WEBHOOK_SECRET=$(openssl rand -hex 32)
+fly deploy
+
+# 3. Brancher le webhook Stripe sur https://<app>.fly.dev/v1/stripe/webhook
+# 4. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
+#    API est activée automatiquement par le webhook. Zéro humain dans la boucle.
+```
+
+> **Repo privé, code sensible ?** Aucun code source ne quitte votre machine
+> par défaut : `ctx generate` / `index` / `serve` tournent en local. Le mode
+> hébergé sert uniquement l'analyse structurée + les fichiers de contexte
+> déjà générés — jamais le code lui-même.

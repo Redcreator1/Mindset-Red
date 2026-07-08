@@ -84,3 +84,84 @@ export function priceForPlan(plan: PlanId, priceMap: Record<string, PlanId>): st
   const entry = Object.entries(priceMap).find(([, p]) => p === plan);
   return entry ? entry[0] : null;
 }
+
+/** Plan → Stripe product + price definition used by the bootstrap step. */
+export interface StripePlanSpec {
+  plan: PlanId;
+  name: string;
+  amountCents: number;
+  currency: string;
+  interval: "month" | "year";
+}
+
+export const DEFAULT_PLAN_SPECS: StripePlanSpec[] = [
+  { plan: "pro", name: "mindset-ctx Pro", amountCents: 1900, currency: "eur", interval: "month" },
+  { plan: "team", name: "mindset-ctx Team", amountCents: 9900, currency: "eur", interval: "month" },
+];
+
+/**
+ * Bootstrap products + prices in the Stripe account and return the price→plan
+ * map ready to feed STRIPE_PRICE_MAP. Idempotent by product `name`: existing
+ * products are reused (via a search) so re-running doesn't create duplicates.
+ * Zero-dep: two REST calls per plan.
+ */
+export async function bootstrapStripePlans(
+  secretKey: string,
+  specs: StripePlanSpec[] = DEFAULT_PLAN_SPECS,
+  baseURL = "https://api.stripe.com",
+): Promise<Record<string, PlanId>> {
+  const map: Record<string, PlanId> = {};
+  for (const spec of specs) {
+    const productId = await ensureProduct(secretKey, spec.name, baseURL);
+    const priceId = await ensurePrice(secretKey, productId, spec, baseURL);
+    map[priceId] = spec.plan;
+  }
+  return map;
+}
+
+async function ensureProduct(secretKey: string, name: string, baseURL: string): Promise<string> {
+  // Try to find an existing product by exact name.
+  const search = await stripeGet<{ data: { id: string; name: string }[] }>(
+    secretKey,
+    `${baseURL}/v1/products?active=true&limit=100`,
+  );
+  const existing = search.data.find((p) => p.name === name);
+  if (existing) return existing.id;
+  const created = await stripePost<{ id: string }>(secretKey, `${baseURL}/v1/products`, { name });
+  return created.id;
+}
+
+async function ensurePrice(secretKey: string, productId: string, spec: StripePlanSpec, baseURL: string): Promise<string> {
+  // Reuse a matching active recurring price on the product if it exists.
+  const prices = await stripeGet<{ data: { id: string; unit_amount: number; currency: string; recurring: { interval: string } | null }[] }>(
+    secretKey,
+    `${baseURL}/v1/prices?product=${productId}&active=true&limit=100`,
+  );
+  const match = prices.data.find(
+    (p) => p.unit_amount === spec.amountCents && p.currency === spec.currency && p.recurring?.interval === spec.interval,
+  );
+  if (match) return match.id;
+  const created = await stripePost<{ id: string }>(secretKey, `${baseURL}/v1/prices`, {
+    product: productId,
+    unit_amount: String(spec.amountCents),
+    currency: spec.currency,
+    "recurring[interval]": spec.interval,
+  });
+  return created.id;
+}
+
+async function stripeGet<T>(secretKey: string, url: string): Promise<T> {
+  const res = await fetch(url, { headers: { authorization: `Bearer ${secretKey}` } });
+  if (!res.ok) throw new Error(`Stripe GET ${url} → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()) as T;
+}
+
+async function stripePost<T>(secretKey: string, url: string, fields: Record<string, string>): Promise<T> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${secretKey}`, "content-type": "application/x-www-form-urlencoded" },
+    body: encodeForm(fields),
+  });
+  if (!res.ok) throw new Error(`Stripe POST ${url} → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return (await res.json()) as T;
+}

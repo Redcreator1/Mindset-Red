@@ -1,0 +1,43 @@
+# Fly.io deployment for mindset-ctx.
+#   fly launch --copy-config --dockerfile Dockerfile
+#   fly volumes create ctx_data --size 1
+#   fly secrets set CTX_STRIPE_API_KEY=sk_live_... CTX_STRIPE_SECRET=whsec_... STRIPE_PRICE_MAP='{"price_...":"pro"}'
+#   fly deploy
+
+app = "mindset-ctx"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "4870"
+  CTX_BASE_URL = "https://mindset-ctx.fly.dev"
+  CTX_TENANTS = "/data/tenants.json"
+
+[mounts]
+  source = "ctx_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 4870
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 200
+    soft_limit = 100
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "10s"
+  method = "GET"
+  path = "/v1/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory = "256mb"

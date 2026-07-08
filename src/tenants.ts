@@ -86,6 +86,12 @@ export class TenantStore {
     return true;
   }
 
+  /** Add or replace a tenant; persists if file-backed. */
+  upsert(tenant: Tenant): void {
+    this.byKey.set(tenant.key, tenant);
+    this.persist();
+  }
+
   private persist(): void {
     if (!this.path) return;
     mkdirSync(dirname(this.path), { recursive: true });

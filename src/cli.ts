@@ -14,9 +14,9 @@ import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
 import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, installUrlHint } from "./githubapp.js";
-import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
+import { bootstrapStripePlans, createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.7.0";
+const VERSION = "0.8.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -60,6 +60,9 @@ Usage:
                                create a Stripe Checkout link to subscribe it.
                                Needs CTX_STRIPE_API_KEY + STRIPE_PRICE_MAP.
                                This is the "collect the first euro" front door
+  ctx stripe bootstrap         Create the Pro/Team products+prices in Stripe
+                               (idempotent) and print STRIPE_PRICE_MAP ready
+                               to paste. Needs CTX_STRIPE_API_KEY.
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -243,6 +246,22 @@ async function cmdCheckout(argv: string[]): Promise<void> {
   console.error(JSON.stringify({ key: tenantKey, name: "new-customer", repos: "*", plan: "free" }, null, 2));
 }
 
+async function cmdStripe(argv: string[]): Promise<void> {
+  const sub = positionals(argv)[0];
+  if (sub !== "bootstrap") {
+    console.error("Usage: ctx stripe bootstrap");
+    process.exit(1);
+  }
+  const secretKey = process.env.CTX_STRIPE_API_KEY;
+  if (!secretKey) {
+    console.error("ctx stripe bootstrap needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).");
+    process.exit(1);
+  }
+  const map = await bootstrapStripePlans(secretKey);
+  console.error("Created/reused Stripe products + prices. Paste this into your env:");
+  console.log(`STRIPE_PRICE_MAP='${JSON.stringify(map)}'`);
+}
+
 function cmdApp(argv: string[]): void {
   const sub = positionals(argv)[0];
   const baseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL ?? "https://your-host.example.com";
@@ -276,6 +295,9 @@ switch (command) {
     break;
   case "checkout":
     await cmdCheckout(rest);
+    break;
+  case "stripe":
+    await cmdStripe(rest);
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));

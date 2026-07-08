@@ -11,8 +11,9 @@ import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
 import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
-import { createCheckoutSession, priceForPlan } from "./checkout.js";
+import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
+import { renderPricing, renderSuccess } from "./pricing.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -63,6 +64,8 @@ export interface ServerOptions {
   stripePriceMap?: Record<string, PlanId>;
   /** Stripe secret key (sk_...); enables POST /v1/checkout. */
   stripeApiKey?: string;
+  /** Override Stripe API base (for tests). Default: https://api.stripe.com */
+  stripeBaseURL?: string;
   /** Where Stripe returns the buyer after checkout. */
   checkoutSuccessUrl?: string;
   checkoutCancelUrl?: string;
@@ -200,6 +203,82 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
     if (path === "/v1/health" || path === "/") {
       sendJson(res, 200, { ok: true, service: "mindset-ctx", repos: names });
+      return;
+    }
+
+    // Public marketing pages — no auth required.
+    if (path === "/pricing" || path === "/") {
+      const availablePlans = new Set<PlanId>(Object.values(priceMap));
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderPricing({ baseUrl: opts.appBaseUrl ?? "", availablePlans }));
+      return;
+    }
+
+    // Self-service signup: mint a tenant key, register it as free, and
+    // create a Stripe Checkout session. No pre-existing account required —
+    // this is the fully-automated payment funnel.
+    if (path === "/v1/signup") {
+      if (!opts.stripeApiKey) {
+        sendJson(res, 503, { error: "signup not configured — set --stripe-api-key" });
+        return;
+      }
+      const plan = (url.searchParams.get("plan") ?? "pro") as PlanId;
+      if (!PLANS[plan] || plan === "free") {
+        sendJson(res, 400, { error: `plan '${plan}' cannot be purchased`, plans: Object.keys(PLANS).filter((p) => p !== "free") });
+        return;
+      }
+      const priceId = priceForPlan(plan, priceMap);
+      if (!priceId) {
+        sendJson(res, 400, { error: `no Stripe price mapped for plan '${plan}'` });
+        return;
+      }
+      // Mint a fresh tenant key and add it as a free tenant. The webhook flips
+      // it to the paid plan once the subscription is created.
+      const tenantKey = newTenantKey();
+      store.upsert({ key: tenantKey, name: `signup-${tenantKey.slice(-8)}`, repos: "*", plan: "free" });
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      try {
+        const session = await createCheckoutSession({
+          secretKey: opts.stripeApiKey,
+          priceId,
+          tenantKey,
+          successUrl: `${base}/v1/signup/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${base}/pricing`,
+          baseURL: opts.stripeBaseURL,
+        });
+        res.writeHead(302, { location: session.url });
+        res.end();
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    // Stripe redirects here after successful payment. Look up the checkout
+    // session to recover the tenant key we stamped into client_reference_id,
+    // and show it to the buyer exactly once.
+    if (path === "/v1/signup/success") {
+      const sessionId = url.searchParams.get("session_id");
+      if (!sessionId || !opts.stripeApiKey) {
+        sendJson(res, 400, { error: "missing session_id" });
+        return;
+      }
+      try {
+        const stripeBase = (opts.stripeBaseURL ?? "https://api.stripe.com").replace(/\/+$/, "");
+        const lookup = await fetch(`${stripeBase}/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { authorization: `Bearer ${opts.stripeApiKey}` },
+        });
+        if (!lookup.ok) {
+          sendJson(res, 502, { error: `stripe lookup ${lookup.status}` });
+          return;
+        }
+        const data = (await lookup.json()) as { client_reference_id?: string };
+        const tenantKey = data.client_reference_id ?? "(clé introuvable — contactez le support)";
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(renderSuccess(tenantKey));
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 
@@ -369,6 +448,7 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
           tenantKey: tenant.key,
           successUrl: opts.checkoutSuccessUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
           cancelUrl: opts.checkoutCancelUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+          baseURL: opts.stripeBaseURL,
         });
         sendJson(res, 200, { plan, checkoutUrl: session.url, sessionId: session.id });
       } catch (err) {
