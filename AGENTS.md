@@ -25,6 +25,6 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot Workspace, …) 
 
 - Do not edit generated files above their manual marker; run `ctx generate` instead.
 - Do not commit secrets, tokens or `.env` files.
-- Dependencies: currently 3 (see manifest: package.json) — keep the footprint minimal.
+- Dependencies: currently 4 (see manifest: package.json) — keep the footprint minimal.
 
 <!-- ctx:manual — everything below this line is yours, never overwritten -->

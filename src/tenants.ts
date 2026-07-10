@@ -1,6 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { PLANS, planFor, type Plan, type PlanId } from "./billing.js";
+import { PLANS, type PlanId } from "./billing.js";
+import { tenantDailyLimit, type Tenant } from "./tenant-core.js";
+export { tenantDailyLimit, tenantMayAccess, tenantPlan, type Tenant } from "./tenant-core.js";
 
 /**
  * Multi-tenant access control for the hosted mode: each tenant gets an API
@@ -17,26 +19,9 @@ import { PLANS, planFor, type Plan, type PlanId } from "./billing.js";
  * field still overrides the plan quota when present, for hand-tuned tenants.
  */
 
-export interface Tenant {
-  key: string;
-  name: string;
-  /** Repo names this key may access, or "*" for all. */
-  repos: string[] | "*";
-  /** Subscription plan id; defaults to "free". */
-  plan?: PlanId;
-  /** Explicit override of the plan's daily quota (optional). */
-  dailyLimit?: number;
-}
-
-/** Resolve the effective daily quota for a tenant (override > plan). */
-export function tenantDailyLimit(tenant: Tenant): number | null {
-  if (tenant.dailyLimit !== undefined) return tenant.dailyLimit;
-  return planFor(tenant.plan).dailyLimit;
-}
-
-export function tenantPlan(tenant: Tenant): Plan {
-  return planFor(tenant.plan);
-}
+// Tenant, tenantDailyLimit, tenantPlan, tenantMayAccess are re-exported from
+// ./tenant-core.js above so that dashboard.ts (and the Cloudflare Worker) can
+// import them without pulling in node:fs.
 
 export function parseTenants(json: string): Tenant[] {
   const parsed = JSON.parse(json) as { tenants?: Tenant[] };
@@ -147,6 +132,4 @@ export function tenantForKey(tenants: Tenant[], key: string | undefined): Tenant
   return tenants.find((t) => t.key === key) ?? null;
 }
 
-export function tenantMayAccess(tenant: Tenant, repo: string): boolean {
-  return tenant.repos === "*" || tenant.repos.includes(repo);
-}
+// tenantMayAccess is re-exported at the top of the file from tenant-core.js.

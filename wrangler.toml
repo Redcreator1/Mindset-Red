@@ -1,0 +1,22 @@
+# Cloudflare Workers deployment for mindset-ctx (hosted funnel).
+# Deploy: pushed automatically by .github/workflows/deploy-cloudflare.yml on
+# every push to main. Runtime state lives in the CTX_KV namespace; Stripe
+# secrets are set as encrypted vars via `wrangler secret put` from CI.
+
+name = "mindset-ctx"
+main = "src/worker/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# CTX_BASE_URL is set at deploy time to the actual workers.dev URL (or the
+# custom domain if you bind one). Overridable per environment.
+[vars]
+CTX_BASE_URL = ""
+
+# KV namespace holding tenants + daily usage counters.
+# The id below is a placeholder; the deploy workflow creates the namespace
+# on first run (via `wrangler kv namespace create CTX_KV`) and rewrites this
+# file with the real id before deploying.
+[[kv_namespaces]]
+binding = "CTX_KV"
+id = "REPLACE_ME_AT_DEPLOY"

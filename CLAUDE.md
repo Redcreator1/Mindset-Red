@@ -8,7 +8,7 @@
 
 Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub repo, with a memory layer over its history.
 
-**Stack:** TypeScript (29 files), Markdown (6 files), JSON (3 files), YAML (2 files), TOML (1 file) · TypeScript
+**Stack:** TypeScript (34 files), Markdown (6 files), YAML (4 files), JSON (3 files), TOML (1 file) · TypeScript
 
 ## Repository layout
 
@@ -19,11 +19,11 @@ Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.
 - `AGENTS.md`
 - `CLAUDE.md`
 - `CONTRIBUTING.md`
-- `fly.toml`
 - `package-lock.json`
 - `package.json`
 - `README.md`
 - `tsconfig.json`
+- `wrangler.toml`
 
 ## Commands
 

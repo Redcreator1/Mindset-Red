@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-
 /**
  * GitHub App packaging: a manifest for one-click creation, plus a handler
  * that maps App webhook events (installation lifecycle) onto our tenant model.
@@ -104,6 +102,3 @@ export function installUrlHint(baseUrl: string): string {
   return `Create the App from manifest: POST the manifest at ${url}/v1/app/manifest to https://github.com/settings/apps/new`;
 }
 
-export function readManifestFile(path: string): AppManifest {
-  return JSON.parse(readFileSync(path, "utf8")) as AppManifest;
-}

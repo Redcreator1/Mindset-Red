@@ -1,5 +1,5 @@
-import type { Tenant } from "./tenants.js";
-import { tenantDailyLimit, tenantPlan } from "./tenants.js";
+import type { Tenant } from "./tenant-core.js";
+import { tenantDailyLimit, tenantPlan } from "./tenant-core.js";
 import type { MemoryRecord } from "./types.js";
 
 /**
