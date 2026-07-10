@@ -4,7 +4,7 @@
 #   fly secrets set CTX_STRIPE_API_KEY=sk_live_... CTX_STRIPE_SECRET=whsec_... STRIPE_PRICE_MAP='{"price_...":"pro"}'
 #   fly deploy
 
-app = "mindset-ctx"
+app = "mindset-ctx-prod"
 primary_region = "cdg"
 
 [build]
@@ -12,7 +12,7 @@ primary_region = "cdg"
 
 [env]
   PORT = "4870"
-  CTX_BASE_URL = "https://mindset-ctx.fly.dev"
+  CTX_BASE_URL = "https://mindset-ctx-prod.fly.dev"
   CTX_TENANTS = "/data/tenants.json"
 
 [mounts]

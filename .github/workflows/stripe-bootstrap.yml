@@ -1,0 +1,40 @@
+name: Stripe — bootstrap products & prices
+
+# One-shot, manual: creates the Pro/Team products+prices in your Stripe account
+# (idempotent — re-runs are safe) and prints the STRIPE_PRICE_MAP you paste as
+# a GitHub Actions secret. Uses whichever Stripe key you set in CTX_STRIPE_API_KEY
+# (test key → test-mode prices; live key → live-mode prices).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Create Stripe products + prices
+        env:
+          CTX_STRIPE_API_KEY: ${{ secrets.CTX_STRIPE_API_KEY }}
+        run: |
+          echo "=========================================================="
+          echo "Result (idempotent — safe to re-run):"
+          echo "=========================================================="
+          node dist/cli.js stripe bootstrap
+          echo "=========================================================="
+          echo ""
+          echo "👉 Copy the STRIPE_PRICE_MAP='...' line above."
+          echo "👉 Save it as a GitHub Actions secret:"
+          echo "   https://github.com/${{ github.repository }}/settings/secrets/actions/new"
+          echo "   Name:  STRIPE_PRICE_MAP"
+          echo "   Value: the '{\"price_...\":\"pro\",...}' part (without STRIPE_PRICE_MAP= and without outer quotes)"
