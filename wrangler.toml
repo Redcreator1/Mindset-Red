@@ -14,9 +14,7 @@ compatibility_flags = ["nodejs_compat"]
 CTX_BASE_URL = ""
 
 # KV namespace holding tenants + daily usage counters.
-# The id below is a placeholder; the deploy workflow creates the namespace
-# on first run (via `wrangler kv namespace create CTX_KV`) and rewrites this
-# file with the real id before deploying.
+# Created out-of-band once (via the Cloudflare dashboard or MCP connector).
 [[kv_namespaces]]
 binding = "CTX_KV"
-id = "REPLACE_ME_AT_DEPLOY"
+id = "fb712ab4857d4e74bf99e766197c8208"

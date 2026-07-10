@@ -22,32 +22,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Ensure KV namespace CTX_KV exists (idempotent)
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          # Fetch existing namespaces.
-          NS=$(npx --yes wrangler@3 kv namespace list 2>/dev/null || echo "[]")
-          ID=$(echo "$NS" | node -e "
-            const list = JSON.parse(require('fs').readFileSync(0,'utf8'));
-            const hit = list.find(n => n.title === 'mindset-ctx-CTX_KV');
-            process.stdout.write(hit ? hit.id : '');
-          ")
-          if [ -z "$ID" ]; then
-            echo "Creating KV namespace CTX_KV…"
-            ID=$(npx --yes wrangler@3 kv namespace create CTX_KV --preview false 2>&1 \
-                 | grep -oE 'id = "[a-f0-9]+"' | head -1 | cut -d'"' -f2)
-          fi
-          echo "KV_ID=$ID" >> $GITHUB_ENV
-          echo "Using CTX_KV id: $ID"
-
-      - name: Pin KV id into wrangler.toml
-        run: |
-          sed -i 's/id = "REPLACE_ME_AT_DEPLOY"/id = "'"$KV_ID"'"/' wrangler.toml
-          grep -A2 kv_namespaces wrangler.toml
-
       - name: Push runtime secrets to the Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
