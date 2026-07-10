@@ -12,7 +12,7 @@ _Auto-generated snapshot of the repository structure. Narrative sections live be
 - **Frameworks / tooling:** TypeScript
 - **Manifests:** package.json
 - **Tests:** yes · **CI:** yes
-- **Files scanned:** 51
+- **Files scanned:** 50
 - **Remote:** https://github.com/Redcreator1/Mindset-Red
 
 ## Top-level layout
