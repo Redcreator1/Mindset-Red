@@ -89,9 +89,15 @@ function recordText(r: MemoryRecord): string {
  * instant and keeps the code dependency-free. Embedding-based retrieval can
  * later slot in behind this same signature.
  */
-export function searchMemory(records: MemoryRecord[], query: string, limit = 20): MemoryRecord[] {
+export interface ScoredRecord {
+  record: MemoryRecord;
+  score: number;
+}
+
+/** BM25 scoring that keeps the scores — the basis for both lexical and hybrid search. */
+export function scoreBM25(records: MemoryRecord[], query: string): ScoredRecord[] {
   const terms = [...new Set(tokenize(query))];
-  if (terms.length === 0) return records.slice(0, limit);
+  if (terms.length === 0) return records.map((record) => ({ record, score: 0 }));
 
   const k1 = 1.5;
   const b = 0.75;
@@ -104,7 +110,7 @@ export function searchMemory(records: MemoryRecord[], query: string, limit = 20)
     docFreq.set(term, docs.reduce((df, d) => df + (d.includes(term) ? 1 : 0), 0));
   }
 
-  const scored: { record: MemoryRecord; score: number }[] = [];
+  const scored: ScoredRecord[] = [];
   for (let i = 0; i < n; i++) {
     const termFreq = new Map<string, number>();
     for (const tok of docs[i]) termFreq.set(tok, (termFreq.get(tok) ?? 0) + 1);
@@ -120,5 +126,11 @@ export function searchMemory(records: MemoryRecord[], query: string, limit = 20)
   }
 
   scored.sort((a, b2) => b2.score - a.score);
-  return scored.slice(0, limit).map((s) => s.record);
+  return scored;
+}
+
+export function searchMemory(records: MemoryRecord[], query: string, limit = 20): MemoryRecord[] {
+  const terms = [...new Set(tokenize(query))];
+  if (terms.length === 0) return records.slice(0, limit);
+  return scoreBM25(records, query).slice(0, limit).map((s) => s.record);
 }

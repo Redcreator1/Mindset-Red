@@ -6,9 +6,14 @@ import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, loadMemory, mergeRecords, searchMemory, writeMemory } from "./memory.js";
 import { semanticSearch } from "./embeddings.js";
+import { hybridSearch } from "./hybrid.js";
 import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants.js";
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
+import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
+import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
+import { PLANS } from "./billing.js";
+import { renderPricing, renderSuccess } from "./pricing.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -20,9 +25,12 @@ import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from ".
  *   GET  /v1/usage                              — calling tenant's quota usage (tenants mode)
  *   GET  /v1/repos/:repo/analysis               — structured repo analysis (JSON)
  *   GET  /v1/repos/:repo/context/:name          — a context file (claude, agents, …)
- *   GET  /v1/repos/:repo/memory/search?q=&mode= — memory search (BM25; mode=semantic
- *                                                 uses Voyage embeddings, needs
- *                                                 VOYAGE_API_KEY + `ctx index --embed`)
+ *   GET  /v1/dashboard                          — HTML ops dashboard (repos, tenants, quotas)
+ *   GET  /v1/dashboard/data                      — the same as JSON
+ *   GET  /v1/repos/:repo/memory/search?q=&mode= — memory search. mode=lexical (BM25,
+ *                                                 default) | semantic (Voyage embeddings)
+ *                                                 | hybrid (RRF fusion of both). semantic
+ *                                                 and hybrid need `ctx index --embed`.
  *   POST /v1/repos/:repo/webhook                — GitHub webhook (push/issues/PR):
  *                                                 verifies X-Hub-Signature-256 and
  *                                                 refreshes memory + context files
@@ -54,6 +62,13 @@ export interface ServerOptions {
   stripeSecret?: string;
   /** Stripe Price ID → plan id map (from STRIPE_PRICE_MAP). */
   stripePriceMap?: Record<string, PlanId>;
+  /** Stripe secret key (sk_...); enables POST /v1/checkout. */
+  stripeApiKey?: string;
+  /** Override Stripe API base (for tests). Default: https://api.stripe.com */
+  stripeBaseURL?: string;
+  /** Where Stripe returns the buyer after checkout. */
+  checkoutSuccessUrl?: string;
+  checkoutCancelUrl?: string;
   /** Public base URL, used to build the GitHub App manifest. */
   appBaseUrl?: string;
 }
@@ -154,16 +169,19 @@ async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerR
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 20) || 20, 100);
     const mode = url.searchParams.get("mode") ?? "lexical";
     const records = loadMemory(root);
-    if (mode === "semantic") {
-      try {
+    try {
+      if (mode === "semantic") {
         const results = await semanticSearch(root, records, q, limit);
         sendJson(res, 200, { query: q, mode, total: records.length, results });
-      } catch (err) {
-        sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
+      } else if (mode === "hybrid") {
+        const results = await hybridSearch(root, records, q, limit);
+        sendJson(res, 200, { query: q, mode, total: records.length, results });
+      } else {
+        sendJson(res, 200, { query: q, mode: "lexical", total: records.length, results: searchMemory(records, q, limit) });
       }
-      return;
+    } catch (err) {
+      sendJson(res, 400, { error: err instanceof Error ? err.message : String(err) });
     }
-    sendJson(res, 200, { query: q, mode: "lexical", total: records.length, results: searchMemory(records, q, limit) });
     return;
   }
 
@@ -185,6 +203,82 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
     if (path === "/v1/health" || path === "/") {
       sendJson(res, 200, { ok: true, service: "mindset-ctx", repos: names });
+      return;
+    }
+
+    // Public marketing pages — no auth required.
+    if (path === "/pricing" || path === "/") {
+      const availablePlans = new Set<PlanId>(Object.values(priceMap));
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderPricing({ baseUrl: opts.appBaseUrl ?? "", availablePlans }));
+      return;
+    }
+
+    // Self-service signup: mint a tenant key, register it as free, and
+    // create a Stripe Checkout session. No pre-existing account required —
+    // this is the fully-automated payment funnel.
+    if (path === "/v1/signup") {
+      if (!opts.stripeApiKey) {
+        sendJson(res, 503, { error: "signup not configured — set --stripe-api-key" });
+        return;
+      }
+      const plan = (url.searchParams.get("plan") ?? "pro") as PlanId;
+      if (!PLANS[plan] || plan === "free") {
+        sendJson(res, 400, { error: `plan '${plan}' cannot be purchased`, plans: Object.keys(PLANS).filter((p) => p !== "free") });
+        return;
+      }
+      const priceId = priceForPlan(plan, priceMap);
+      if (!priceId) {
+        sendJson(res, 400, { error: `no Stripe price mapped for plan '${plan}'` });
+        return;
+      }
+      // Mint a fresh tenant key and add it as a free tenant. The webhook flips
+      // it to the paid plan once the subscription is created.
+      const tenantKey = newTenantKey();
+      store.upsert({ key: tenantKey, name: `signup-${tenantKey.slice(-8)}`, repos: "*", plan: "free" });
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      try {
+        const session = await createCheckoutSession({
+          secretKey: opts.stripeApiKey,
+          priceId,
+          tenantKey,
+          successUrl: `${base}/v1/signup/success?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${base}/pricing`,
+          baseURL: opts.stripeBaseURL,
+        });
+        res.writeHead(302, { location: session.url });
+        res.end();
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    // Stripe redirects here after successful payment. Look up the checkout
+    // session to recover the tenant key we stamped into client_reference_id,
+    // and show it to the buyer exactly once.
+    if (path === "/v1/signup/success") {
+      const sessionId = url.searchParams.get("session_id");
+      if (!sessionId || !opts.stripeApiKey) {
+        sendJson(res, 400, { error: "missing session_id" });
+        return;
+      }
+      try {
+        const stripeBase = (opts.stripeBaseURL ?? "https://api.stripe.com").replace(/\/+$/, "");
+        const lookup = await fetch(`${stripeBase}/v1/checkout/sessions/${encodeURIComponent(sessionId)}`, {
+          headers: { authorization: `Bearer ${opts.stripeApiKey}` },
+        });
+        if (!lookup.ok) {
+          sendJson(res, 502, { error: `stripe lookup ${lookup.status}` });
+          return;
+        }
+        const data = (await lookup.json()) as { client_reference_id?: string };
+        const tenantKey = data.client_reference_id ?? "(clé introuvable — contactez le support)";
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(renderSuccess(tenantKey));
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
       return;
     }
 
@@ -327,6 +421,64 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Checkout: the calling tenant requests an upgrade → Stripe payment URL.
+    if (path === "/v1/checkout") {
+      if (!tenant) {
+        sendJson(res, 404, { error: "checkout is only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!opts.stripeApiKey) {
+        sendJson(res, 503, { error: "checkout not configured — set --stripe-api-key or CTX_STRIPE_API_KEY" });
+        return;
+      }
+      const plan = (url.searchParams.get("plan") ?? "pro") as PlanId;
+      if (!PLANS[plan]) {
+        sendJson(res, 400, { error: `unknown plan '${plan}'`, plans: Object.keys(PLANS) });
+        return;
+      }
+      const priceId = priceForPlan(plan, priceMap);
+      if (!priceId) {
+        sendJson(res, 400, { error: `no Stripe price mapped for plan '${plan}' (free plan needs no checkout)` });
+        return;
+      }
+      try {
+        const session = await createCheckoutSession({
+          secretKey: opts.stripeApiKey,
+          priceId,
+          tenantKey: tenant.key,
+          successUrl: opts.checkoutSuccessUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+          cancelUrl: opts.checkoutCancelUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+          baseURL: opts.stripeBaseURL,
+        });
+        sendJson(res, 200, { plan, checkoutUrl: session.url, sessionId: session.id });
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    // Dashboard: HTML shell at /v1/dashboard, JSON at /v1/dashboard/data.
+    // Scoped to the repos/tenants the caller may see.
+    if (path === "/v1/dashboard" || path === "/v1/dashboard/data") {
+      const visibleRepos = (tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names).map((name) =>
+        summarizeRecords(name, loadMemory(repos[name])),
+      );
+      // A wildcard-scope tenant is an admin and sees every tenant; a scoped
+      // tenant sees only itself; keyless (shared-key) mode sees all.
+      const visibleTenants =
+        tenant && tenant.repos !== "*"
+          ? [summarizeTenant(tenant, meter.report(tenant).requests)]
+          : store.all().map((t) => summarizeTenant(t, meter.report(t).requests));
+      const data: DashboardData = { service: "mindset-ctx", repos: visibleRepos, tenants: visibleTenants };
+      if (path === "/v1/dashboard/data") {
+        sendJson(res, 200, data);
+      } else {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(renderDashboard(data));
+      }
+      return;
+    }
+
     if (path === "/v1/repos") {
       const visible = tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names;
       sendJson(res, 200, { repos: visible.map((name) => ({ name, root: repos[name] })) });
@@ -362,9 +514,9 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     sendJson(res, 404, {
       error: "not found",
       routes: [
-        "/v1/health", "/v1/repos", "/v1/usage",
+        "/v1/health", "/v1/repos", "/v1/usage", "/v1/dashboard",
         "/v1/repos/:repo/analysis", "/v1/repos/:repo/context/:name",
-        "/v1/repos/:repo/memory/search?q=", "POST /v1/repos/:repo/webhook",
+        "/v1/repos/:repo/memory/search?q=&mode=hybrid", "POST /v1/repos/:repo/webhook",
       ],
     });
   }

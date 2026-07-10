@@ -41,8 +41,9 @@ node dist/cli.js index [path] --github
 # (Voyage AI, le partenaire embeddings d'Anthropic ; VOYAGE_API_KEY requis)
 node dist/cli.js index [path] --embed
 
-# Chercher dans la mémoire depuis le terminal (BM25, ou --semantic)
-node dist/cli.js search "payment retry" --repo-path [path] --semantic
+# Chercher dans la mémoire depuis le terminal
+# (BM25 par défaut, --semantic pour les embeddings, --hybrid pour la fusion RRF)
+node dist/cli.js search "payment retry" --repo-path [path] --hybrid
 
 # Servir un ou plusieurs repos en HTTP pour les outils IA
 node dist/cli.js serve [path ...] --port 4870 --api-key SECRET
@@ -56,6 +57,10 @@ node dist/cli.js serve [path] --webhook-secret SECRET
 
 # GitHub App : imprime le manifest pour une création en un clic
 node dist/cli.js app manifest --base-url https://mon-hote.example.com
+
+# Encaisser : génère une clé tenant + un lien de paiement Stripe
+CTX_STRIPE_API_KEY=sk_live_... STRIPE_PRICE_MAP='{"price_123":"pro"}' \
+  node dist/cli.js checkout --plan pro
 
 # Facturation Stripe : les webhooks d'abonnement font basculer le plan
 # d'un tenant (free/pro/team/enterprise → quotas), persisté sur disque
@@ -100,10 +105,12 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `GET /v1/usage` | Consommation du tenant appelant (mode `--tenants`) |
 | `GET /v1/repos/:repo/analysis` | Analyse structurée du repo (JSON) |
 | `GET /v1/repos/:repo/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
-| `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut) ou **sémantique** (`mode=semantic`, embeddings Voyage) |
+| `GET /v1/dashboard` · `/v1/dashboard/data` | Dashboard web (HTML/JSON) : repos, tenants, plans, quotas, mémoire — scopé par tenant |
+| `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut), **sémantique** (`mode=semantic`) ou **hybride** (`mode=hybrid`, fusion RRF) |
 | `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) |
+| `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) |
 | `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant |
 
 Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
@@ -133,6 +140,25 @@ Chaque fichier généré contient un marqueur `ctx:manual`. Tout ce que vous
 écrivez **en dessous** est conservé lors des régénérations — le haut du fichier
 reste toujours synchronisé avec la réalité du code.
 
+## Repos privés — comment les devs l'utilisent
+
+**Le mode self-hosted est fait pour les repos privés** : l'outil lit le clone
+local (le tien), donc **ton code privé ne quitte jamais ta machine** — c'est un
+argument de confidentialité, pas une limite.
+
+```bash
+# 1. Dans ton repo privé déjà cloné
+node /chemin/dist/cli.js generate .     # génère le contexte
+node /chemin/dist/cli.js index .        # indexe la mémoire
+
+# 2. Branche-le dans Claude Code / Cursor via MCP (local, rien ne sort)
+claude mcp add mindset-ctx -- node /chemin/dist/cli.js mcp /chemin/repo/prive
+```
+
+Pour la mémoire des PRs/issues d'un repo privé, `ctx index --github` utilise ton
+`GITHUB_TOKEN` personnel (scope `repo`). En **mode hébergé**, la lecture des repos
+privés passera par le token d'installation de la GitHub App (voir roadmap).
+
 ## Développement
 
 ```bash
@@ -156,5 +182,37 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.4 — **multi-tenants** : clés par client, scopes par repo, quotas journaliers, métering `/v1/usage`
 - [x] v0.5 — **GitHub App packagée** : manifest servi (`/v1/app/manifest`, création un clic) + webhook d'installation (`/v1/app/webhook`, HMAC vérifiée, cycle de vie classifié)
 - [x] v0.5 — **facturation Stripe** : `POST /v1/stripe/webhook` (signature vérifiée sans SDK) fait basculer le plan d'un tenant ; plans → quotas, store de tenants persistant
-- [ ] Recherche hybride BM25 + embeddings avec re-ranking
-- [ ] Dashboard web (gestion des tenants, visualisation de la mémoire)
+- [x] v0.6 — **recherche hybride** BM25 + embeddings fusionnés par Reciprocal Rank Fusion (`mode=hybrid`, `ctx search --hybrid`)
+- [x] v0.6 — **dashboard web** auto-porté (`/v1/dashboard`) : repos, tenants, plans, quotas et mémoire, scopé par tenant
+- [x] v0.7 — **checkout Stripe** : `ctx checkout` / `GET /v1/checkout` créent un lien de paiement (clé tenant estampée dans les métadonnées) — la porte d'entrée « premier euro »
+- [x] v0.8 — **page pricing publique** (`/pricing`), **signup self-service** (`/v1/signup?plan=…`) et **`ctx stripe bootstrap`** auto-créent les produits/prix dans Stripe. **Dockerfile + fly.toml** livrés — déploiement zéro-configuration.
+- [ ] Token d'installation GitHub App (lecture des repos privés en mode hébergé)
+- [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
+
+## Déploiement en production (0 → premier euro)
+
+Runbook zéro-configuration pour partir en ligne cette nuit :
+
+```bash
+# 1. Créer les produits/prix Stripe (idempotent)
+export CTX_STRIPE_API_KEY=sk_live_...
+node dist/cli.js stripe bootstrap    # → imprime STRIPE_PRICE_MAP='{...}'
+
+# 2. Déployer sur Fly.io (Dockerfile + fly.toml livrés)
+fly launch --copy-config --dockerfile Dockerfile
+fly volumes create ctx_data --size 1
+fly secrets set CTX_STRIPE_API_KEY=sk_live_... \
+                CTX_STRIPE_SECRET=whsec_... \
+                STRIPE_PRICE_MAP='{"price_...":"pro","price_...":"team"}' \
+                CTX_WEBHOOK_SECRET=$(openssl rand -hex 32)
+fly deploy
+
+# 3. Brancher le webhook Stripe sur https://<app>.fly.dev/v1/stripe/webhook
+# 4. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
+#    API est activée automatiquement par le webhook. Zéro humain dans la boucle.
+```
+
+> **Repo privé, code sensible ?** Aucun code source ne quitte votre machine
+> par défaut : `ctx generate` / `index` / `serve` tournent en local. Le mode
+> hébergé sert uniquement l'analyse structurée + les fichiers de contexte
+> déjà générés — jamais le code lui-même.

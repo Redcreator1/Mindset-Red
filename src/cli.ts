@@ -9,12 +9,14 @@ import { createContextServer } from "./server.js";
 import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
 import { hasEmbeddingKey, indexEmbeddings, semanticSearch } from "./embeddings.js";
+import { hybridSearch } from "./hybrid.js";
 import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
-import { loadPriceMap } from "./billing.js";
+import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, installUrlHint } from "./githubapp.js";
+import { bootstrapStripePlans, createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.5.0";
+const VERSION = "0.9.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -34,9 +36,10 @@ Usage:
                                private repos / higher rate limits). With
                                --embed (requires VOYAGE_API_KEY), also compute
                                embeddings for semantic search
-  ctx search <query> [--repo-path path] [--semantic] [--limit N]
+  ctx search <query> [--repo-path path] [--semantic|--hybrid] [--limit N]
                                Search the memory layer from the terminal.
-                               Default is BM25; --semantic uses embeddings
+                               Default is BM25; --semantic uses embeddings;
+                               --hybrid fuses both with Reciprocal Rank Fusion
   ctx serve [path ...] [--port N] [--api-key KEY] [--tenants FILE]
             [--webhook-secret S] [--stripe-secret S] [--base-url URL]
                                Serve one or more repos over HTTP for AI tools.
@@ -52,6 +55,14 @@ Usage:
   ctx app manifest [--base-url URL]
                                Print the GitHub App manifest (JSON) for
                                one-click App creation
+  ctx checkout --plan pro [--key KEY] [--success URL] [--cancel URL]
+                               Mint a tenant key (unless --key is given) and
+                               create a Stripe Checkout link to subscribe it.
+                               Needs CTX_STRIPE_API_KEY + STRIPE_PRICE_MAP.
+                               This is the "collect the first euro" front door
+  ctx stripe bootstrap         Create the Pro/Team products+prices in Stripe
+                               (idempotent) and print STRIPE_PRICE_MAP ready
+                               to paste. Needs CTX_STRIPE_API_KEY.
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -63,7 +74,7 @@ Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic", "--hybrid"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -151,6 +162,15 @@ async function cmdSearch(argv: string[]): Promise<void> {
   const root = resolve(arg("--repo-path", argv) ?? ".");
   const limit = Number(arg("--limit", argv) ?? 10) || 10;
   const records = loadMemory(root);
+  if (argv.includes("--hybrid")) {
+    const hits = await hybridSearch(root, records, query, limit);
+    if (hits.length === 0) return void console.log("No matching records.");
+    for (const h of hits) {
+      const ranks = `L${h.lexicalRank ?? "–"}/S${h.semanticRank ?? "–"}`;
+      console.log(`[${h.record.type}] ${h.record.title}  (${ranks}, ${h.record.date.slice(0, 10)})`);
+    }
+    return;
+  }
   const hits = argv.includes("--semantic")
     ? await semanticSearch(root, records, query, limit)
     : searchMemory(records, query, limit);
@@ -168,6 +188,7 @@ function cmdServe(argv: string[]): void {
   const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
   const webhookSecret = arg("--webhook-secret", argv) ?? process.env.CTX_WEBHOOK_SECRET;
   const stripeSecret = arg("--stripe-secret", argv) ?? process.env.CTX_STRIPE_SECRET;
+  const stripeApiKey = arg("--stripe-api-key", argv) ?? process.env.CTX_STRIPE_API_KEY;
   const stripePriceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
   const appBaseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL;
   const tenantsFile = arg("--tenants", argv);
@@ -176,12 +197,13 @@ function cmdServe(argv: string[]): void {
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripePriceMap, appBaseUrl }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl }).listen(port, () => {
     const names = Object.keys(repos);
     const authLabel = tenantStore ? ` [${tenantStore.all().length} tenant(s)]` : apiKey ? " [api-key required]" : "";
     const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");
     console.log(`mindset-ctx serving ${names.length} repo(s): ${names.join(", ")}${authLabel}${flags ? ` [${flags}]` : ""}`);
     console.log(`  http://localhost:${port}/v1/health`);
+    console.log(`  http://localhost:${port}/v1/dashboard`);
     console.log(`  http://localhost:${port}/v1/repos`);
     console.log(`  http://localhost:${port}/v1/app/manifest`);
     if (stripeSecret) console.log(`  http://localhost:${port}/v1/stripe/webhook  (POST)`);
@@ -193,6 +215,51 @@ function cmdServe(argv: string[]): void {
       console.log(`  http://localhost:${port}/v1/repos/${names[0]}/memory/search?q=fix`);
     }
   });
+}
+
+async function cmdCheckout(argv: string[]): Promise<void> {
+  const secretKey = process.env.CTX_STRIPE_API_KEY;
+  if (!secretKey) {
+    console.error("ctx checkout needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).");
+    process.exit(1);
+  }
+  const priceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
+  const plan = (arg("--plan", argv) ?? "pro") as PlanId;
+  const priceId = priceForPlan(plan, priceMap);
+  if (!priceId) {
+    console.error(`No Stripe price mapped for plan '${plan}'. Set STRIPE_PRICE_MAP, e.g. '{"price_123":"pro"}'.`);
+    process.exit(1);
+  }
+  const tenantKey = arg("--key", argv) ?? newTenantKey();
+  const base = process.env.CTX_BASE_URL ?? "https://example.com";
+  const session = await createCheckoutSession({
+    secretKey,
+    priceId,
+    tenantKey,
+    successUrl: arg("--success", argv) ?? `${base}/v1/dashboard`,
+    cancelUrl: arg("--cancel", argv) ?? `${base}/v1/dashboard`,
+  });
+  console.log(`Tenant key : ${tenantKey}`);
+  console.log(`Plan       : ${plan}`);
+  console.log(`Pay here   : ${session.url}`);
+  console.error(`\nAdd this tenant to ctx.tenants.json (plan flips to '${plan}' automatically once paid):`);
+  console.error(JSON.stringify({ key: tenantKey, name: "new-customer", repos: "*", plan: "free" }, null, 2));
+}
+
+async function cmdStripe(argv: string[]): Promise<void> {
+  const sub = positionals(argv)[0];
+  if (sub !== "bootstrap") {
+    console.error("Usage: ctx stripe bootstrap");
+    process.exit(1);
+  }
+  const secretKey = process.env.CTX_STRIPE_API_KEY;
+  if (!secretKey) {
+    console.error("ctx stripe bootstrap needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).");
+    process.exit(1);
+  }
+  const map = await bootstrapStripePlans(secretKey);
+  console.error("Created/reused Stripe products + prices. Paste this into your env:");
+  console.log(`STRIPE_PRICE_MAP='${JSON.stringify(map)}'`);
 }
 
 function cmdApp(argv: string[]): void {
@@ -225,6 +292,12 @@ switch (command) {
     break;
   case "app":
     cmdApp(rest);
+    break;
+  case "checkout":
+    await cmdCheckout(rest);
+    break;
+  case "stripe":
+    await cmdStripe(rest);
     break;
   case "analyze":
     console.log(JSON.stringify(analyzeRepo(root), null, 2));
