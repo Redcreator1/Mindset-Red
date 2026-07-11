@@ -13,6 +13,12 @@ export interface WorkerTenant {
   repos: string[] | "*";
   plan?: PlanId;
   dailyLimit?: number;
+  /**
+   * Dashboard operator: sees every tenant instead of just itself. Must be
+   * set explicitly (edit the tenant JSON in KV) — never inferred from repo
+   * scope, since every self-service signup tenant is "*"-scoped.
+   */
+  admin?: boolean;
 }
 
 // Minimal duck type for the KV binding — matches Cloudflare's KVNamespace.

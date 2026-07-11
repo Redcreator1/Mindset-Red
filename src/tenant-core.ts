@@ -17,6 +17,13 @@ export interface Tenant {
   dailyLimit?: number;
   /** GitHub App installation id, set when this tenant was created by an App install. */
   installationId?: number;
+  /**
+   * Dashboard operator: sees every tenant instead of just itself. Must be set
+   * explicitly (hand-edit the store) — NEVER inferred from repo scope, since
+   * self-service signup and App installs both legitimately produce "*"-scoped
+   * customer tenants.
+   */
+  admin?: boolean;
 }
 
 /** Resolve the effective daily quota for a tenant (override > plan). */

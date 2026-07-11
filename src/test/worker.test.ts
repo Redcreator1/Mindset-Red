@@ -83,6 +83,73 @@ test("Worker: end-to-end tenant auth + /v1/usage over KV", async () => {
   assert.equal(body.dailyLimit, 5000);
 });
 
+test("Worker: dashboard shows only self unless tenant is an explicit admin", async () => {
+  const kv = new MemKV();
+  const store = new KvTenantStore(kv);
+  // Two ordinary signup-style customers ("*"-scoped, NOT admins) + one operator.
+  await store.upsert({ key: "sk-alice", name: "alice", repos: "*", plan: "pro" });
+  await store.upsert({ key: "sk-bob", name: "bob", repos: "*", plan: "free" });
+  await store.upsert({ key: "sk-ops", name: "ops", repos: "*", plan: "enterprise", admin: true });
+  const env = { CTX_KV: kv };
+
+  const asAlice = await worker.fetch(
+    new Request("https://ctx.example.com/v1/dashboard/data", { headers: { authorization: "Bearer sk-alice" } }),
+    env,
+  );
+  const aliceView = await asAlice.json() as { tenants: { name: string }[] };
+  assert.deepEqual(aliceView.tenants.map((t) => t.name), ["alice"], "a customer must never see other customers");
+
+  const asOps = await worker.fetch(
+    new Request("https://ctx.example.com/v1/dashboard/data", { headers: { authorization: "Bearer sk-ops" } }),
+    env,
+  );
+  const opsView = await asOps.json() as { tenants: { name: string }[] };
+  assert.equal(opsView.tenants.length, 3, "the explicit admin sees everyone");
+});
+
+test("Worker: a malformed STRIPE_PRICE_MAP degrades gracefully instead of 500ing every route", async () => {
+  const env = { CTX_KV: new MemKV(), STRIPE_PRICE_MAP: "{not json" };
+  const health = await worker.fetch(new Request("https://ctx.example.com/v1/health"), env);
+  assert.equal(health.status, 200);
+  const pricing = await worker.fetch(new Request("https://ctx.example.com/pricing"), env);
+  assert.equal(pricing.status, 200);
+  assert.match(await pricing.text(), /indisponible/, "paid plans render as unavailable, site stays up");
+});
+
+test("Worker: /v1/signup/success refuses to hand over the key until the session is paid", async () => {
+  // The session id is visible in the Checkout URL before payment, so the
+  // success page must gate on Stripe's payment_status, not mere existence.
+  const env = { CTX_KV: new MemKV(), CTX_STRIPE_API_KEY: "sk_test_x" };
+  const realFetch = globalThis.fetch;
+  let paymentStatus = "unpaid";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (u.startsWith("https://api.stripe.com/v1/checkout/sessions/")) {
+      return new Response(JSON.stringify({ client_reference_id: "sk-buyer", payment_status: paymentStatus, status: "open" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    const unpaid = await worker.fetch(new Request("https://ctx.example.com/v1/signup/success?session_id=cs_123"), env);
+    assert.equal(unpaid.status, 402);
+    const unpaidHtml = await unpaid.text();
+    assert.ok(!unpaidHtml.includes("sk-buyer"), "key must not leak before payment");
+    assert.ok(!unpaidHtml.includes("Paiement validé"));
+
+    paymentStatus = "paid";
+    const paid = await worker.fetch(new Request("https://ctx.example.com/v1/signup/success?session_id=cs_123"), env);
+    assert.equal(paid.status, 200);
+    const paidHtml = await paid.text();
+    assert.ok(paidHtml.includes("sk-buyer"));
+    assert.ok(paidHtml.includes("Paiement validé"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("verifyStripeSignatureWeb matches an openssl-style signature", async () => {
   const secret = "whsec_test";
   const payload = '{"hello":"world"}';

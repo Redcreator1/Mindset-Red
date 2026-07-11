@@ -516,10 +516,12 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       const visibleRepos = (tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names).map((name) =>
         summarizeRecords(name, loadMemory(repos[name])),
       );
-      // A wildcard-scope tenant is an admin and sees every tenant; a scoped
-      // tenant sees only itself; keyless (shared-key) mode sees all.
+      // Only an explicitly-flagged admin tenant sees every tenant. Customer
+      // tenants are often "*"-scoped too (self-service signup, App installs
+      // covering all repos), so repo scope must never grant the operator
+      // view. Keyless (shared-key) mode still sees all — it IS the operator.
       const visibleTenants =
-        tenant && tenant.repos !== "*"
+        tenant && !tenant.admin
           ? [summarizeTenant(tenant, meter.report(tenant).requests)]
           : store.all().map((t) => summarizeTenant(t, meter.report(t).requests));
       const data: DashboardData = { service: "mindset-ctx", repos: visibleRepos, tenants: visibleTenants };

@@ -57,7 +57,16 @@ export default {
     const path = url.pathname.replace(/\/+$/, "") || "/";
     const store = new KvTenantStore(env.CTX_KV);
     const meter = new KvUsageMeter(env.CTX_KV);
-    const priceMap = loadPriceMap(env.STRIPE_PRICE_MAP);
+    // A malformed STRIPE_PRICE_MAP secret must not take the whole site down
+    // (this runs before any routing, including /pricing and /v1/health) —
+    // degrade to "no plans purchasable" instead, which /pricing renders as
+    // disabled buttons.
+    let priceMap: Record<string, PlanId>;
+    try {
+      priceMap = loadPriceMap(env.STRIPE_PRICE_MAP);
+    } catch {
+      priceMap = {};
+    }
     // `||` (not `??`) on purpose: an unset CTX_BASE_URL var deploys as "" in
     // Cloudflare, not undefined, so `??` would never fall through and every
     // Stripe redirect URL would end up relative — which Stripe rejects.
@@ -109,8 +118,20 @@ export default {
         headers: { authorization: `Bearer ${env.CTX_STRIPE_API_KEY}` },
       });
       if (!lookup.ok) return json(502, { error: `stripe lookup ${lookup.status}` });
-      const data = (await lookup.json()) as { client_reference_id?: string };
-      return html(200, renderSuccess(data.client_reference_id ?? "(clé introuvable)"));
+      const data = (await lookup.json()) as { client_reference_id?: string; payment_status?: string; status?: string };
+      // The session id is visible in the Checkout URL before paying, so anyone
+      // can abandon payment and hit this URL directly. Only hand the key over
+      // (and claim "payment validated") once Stripe says the session is paid.
+      if (data.payment_status !== "paid" && data.status !== "complete") {
+        return html(402, `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Paiement non finalisé — mindset-ctx</title></head>
+<body style="margin:0;font:15px system-ui;background:#0b1220;color:#e2e8f0;padding:48px 32px">
+<main style="max-width:640px;margin:0 auto;background:#111a2e;border:1px solid #1e293b;border-radius:14px;padding:32px">
+<h1 style="margin:0 0 16px;font-size:22px">⏳ Paiement non finalisé</h1>
+<p>Cette session de paiement n'a pas encore été réglée. Si vous venez de payer, patientez quelques secondes puis rafraîchissez cette page.</p>
+<p><a href="${baseUrl}/pricing" style="color:#60a5fa">Retour aux tarifs</a></p>
+</main></body></html>`);
+      }
+      return html(200, renderSuccess(data.client_reference_id ?? "(clé introuvable)", baseUrl));
     }
 
     // Stripe subscription webhook — flips a tenant's plan on billing changes.
@@ -148,8 +169,10 @@ export default {
     }
 
     if (path === "/v1/dashboard" || path === "/v1/dashboard/data") {
-      // A wildcard-scope tenant is treated as admin and sees every tenant.
-      const visibleTenants = tenant.repos === "*"
+      // Only an explicitly-flagged admin tenant sees every tenant. Repo scope
+      // must never grant this: every self-service signup tenant is "*"-scoped,
+      // and the customer list (names, plans, usage) is not public data.
+      const visibleTenants = tenant.admin
         ? await Promise.all((await store.list()).map(async (t) => summarizeTenant(t, (await meter.report(t)).requests)))
         : [summarizeTenant(tenant, (await meter.report(tenant)).requests)];
       const data: DashboardData = { service: "mindset-ctx", repos: [], tenants: visibleTenants };
