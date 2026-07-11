@@ -8,10 +8,12 @@ main = "src/worker/index.ts"
 compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
-# CTX_BASE_URL is set at deploy time to the actual workers.dev URL (or the
-# custom domain if you bind one). Overridable per environment.
+# CTX_BASE_URL must be an absolute URL — Stripe rejects relative
+# success_url/cancel_url values on Checkout Sessions. Confirmed via the
+# first successful deploy's *.workers.dev subdomain; update this if you
+# bind a custom domain instead.
 [vars]
-CTX_BASE_URL = ""
+CTX_BASE_URL = "https://mindset-ctx.mindsetredcom.workers.dev"
 
 # KV namespace holding tenants + daily usage counters.
 # Created out-of-band once (via the Cloudflare dashboard or MCP connector).

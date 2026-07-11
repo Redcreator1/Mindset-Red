@@ -1,0 +1,51 @@
+name: Stripe — bootstrap webhook
+
+# One-shot, manual: creates (or reuses) the Stripe webhook endpoint pointed
+# at the deployed Worker's /v1/stripe/webhook, using only the already-stored
+# CTX_STRIPE_API_KEY secret — no Stripe Dashboard access required. Prints
+# the signing secret (whsec_...) to paste as CTX_STRIPE_SECRET.
+#
+# Idempotent by URL: safe to re-run. Re-running after the endpoint already
+# exists reuses it and reports that no new secret was issued (Stripe only
+# ever shows a signing secret once, at creation).
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Full webhook URL (defaults to CTX_BASE_URL from wrangler.toml + /v1/stripe/webhook)"
+        required: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Create or reuse the Stripe webhook endpoint
+        env:
+          CTX_STRIPE_API_KEY: ${{ secrets.CTX_STRIPE_API_KEY }}
+        run: |
+          set -euo pipefail
+          URL="${{ inputs.url }}"
+          if [ -z "$URL" ]; then
+            BASE=$(grep '^CTX_BASE_URL' wrangler.toml | cut -d'"' -f2)
+            URL="${BASE}/v1/stripe/webhook"
+          fi
+          echo "Target webhook URL: $URL"
+          echo "=========================================================="
+          node dist/cli.js stripe webhook "$URL"
+          echo "=========================================================="
+          echo ""
+          echo "If a line above starts with CTX_STRIPE_SECRET=, copy it and save it as a"
+          echo "GitHub Actions secret named CTX_STRIPE_SECRET, then re-run the"
+          echo "'Deploy to Cloudflare Workers' workflow:"
+          echo "  https://github.com/${{ github.repository }}/settings/secrets/actions"
