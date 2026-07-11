@@ -65,7 +65,10 @@ test("dashboard routes serve HTML and JSON, scoped per tenant", async () => {
   const beta = makeRepo("beta");
   const store = new TenantStore([
     { key: "sk-alice", name: "alice", repos: ["alpha"], plan: "pro" },
-    { key: "sk-admin", name: "admin", repos: "*", plan: "enterprise" },
+    // admin must be explicit — "*" repo scope alone no longer grants the
+    // operator view (signup/App-install customers are "*"-scoped too).
+    { key: "sk-admin", name: "admin", repos: "*", plan: "enterprise", admin: true },
+    { key: "sk-carol", name: "carol", repos: "*", plan: "free" },
   ]);
   const server = createContextServer({ alpha, beta }, { tenantStore: store });
   const base = await listen(server);
@@ -79,7 +82,11 @@ test("dashboard routes serve HTML and JSON, scoped per tenant", async () => {
     // Admin sees both repos and all tenants.
     const adminData = await (await fetch(`${base}/v1/dashboard/data`, { headers: { authorization: "Bearer sk-admin" } })).json() as DashboardData;
     assert.deepEqual(adminData.repos.map((r) => r.name).sort(), ["alpha", "beta"]);
-    assert.equal(adminData.tenants.length, 2);
+    assert.equal(adminData.tenants.length, 3);
+
+    // A "*"-scoped customer without the admin flag sees only itself.
+    const carolData = await (await fetch(`${base}/v1/dashboard/data`, { headers: { authorization: "Bearer sk-carol" } })).json() as DashboardData;
+    assert.deepEqual(carolData.tenants.map((t) => t.name), ["carol"], "wildcard scope must not expose the customer list");
 
     // HTML shell renders and carries the data.
     const htmlRes = await fetch(`${base}/v1/dashboard`, { headers: { authorization: "Bearer sk-admin" } });

@@ -35,7 +35,7 @@ export function renderPricing(opts: { baseUrl: string; availablePlans: Set<PlanI
     const href = c.plan === "free"
       ? "https://github.com/Redcreator1/Mindset-Red#readme"
       : c.plan === "enterprise"
-      ? "mailto:sales@mindset-ctx.dev"
+      ? "mailto:mindset22633@gmail.com?subject=mindset-ctx%20Enterprise"
       : `/v1/signup?plan=${c.plan}`;
     const disabled = !enabled && c.plan !== "free" && c.plan !== "enterprise";
     return `
@@ -96,7 +96,10 @@ export function renderPricing(opts: { baseUrl: string; availablePlans: Set<PlanI
 }
 
 /** Success page after Stripe returns — pure confirmation, no auth. */
-export function renderSuccess(tenantKey: string): string {
+export function renderSuccess(tenantKey: string, baseUrl = ""): string {
+  // With no baseUrl the example degrades to a relative path, still copy-paste
+  // adaptable; with one (the Worker always passes it) it's runnable as-is.
+  const apiBase = baseUrl.replace(/\/+$/, "");
   return `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><title>Bienvenue — mindset-ctx</title>
 <style>
@@ -114,9 +117,9 @@ export function renderSuccess(tenantKey: string): string {
   <p>Merci ! Votre abonnement est activé. Voici votre clé API :</p>
   <code>${esc(tenantKey)}</code>
   <p class="warn">Copiez-la maintenant — elle ne sera plus jamais affichée.</p>
-  <p>Utilisation :</p>
-  <code>curl -H "Authorization: Bearer ${esc(tenantKey)}" https://VOTRE-HOTE/v1/repos</code>
-  <p>Ou dans Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
+  <p>Utilisation — vérifiez votre quota :</p>
+  <code>curl -H "Authorization: Bearer ${esc(tenantKey)}" ${esc(apiBase)}/v1/usage</code>
+  <p>Votre <a href="${esc(apiBase)}/v1/dashboard">dashboard</a> est accessible avec cette même clé. Pour le self-hosted et l'intégration Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
 </main></body></html>`;
 }
 
