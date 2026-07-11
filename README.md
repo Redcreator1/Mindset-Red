@@ -109,7 +109,8 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut), **sémantique** (`mode=semantic`) ou **hybride** (`mode=hybrid`, fusion RRF) |
 | `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
-| `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) |
+| `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) : provisionne/déprovisionne un tenant automatiquement |
+| `GET /v1/app/installed?installation_id=…` | Redirection post-install : remet la clé API du tenant auto-provisionné (une seule fois) |
 | `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) |
 | `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant |
 
@@ -156,8 +157,24 @@ claude mcp add mindset-ctx -- node /chemin/dist/cli.js mcp /chemin/repo/prive
 ```
 
 Pour la mémoire des PRs/issues d'un repo privé, `ctx index --github` utilise ton
-`GITHUB_TOKEN` personnel (scope `repo`). En **mode hébergé**, la lecture des repos
-privés passera par le token d'installation de la GitHub App (voir roadmap).
+`GITHUB_TOKEN` personnel (scope `repo`).
+
+En **mode hébergé**, installer la GitHub App (`ctx app manifest`) provisionne
+automatiquement un tenant scopé aux repos accordés — pas besoin de compte
+préalable, symétrique du signup Stripe. La clé est remise sur la page de
+redirection `/v1/app/installed?installation_id=…` juste après l'install.
+Pour lire le contenu d'un repo privé ainsi accordé, mint un token
+d'installation à la demande :
+
+```bash
+export GITHUB_APP_ID=123456
+export GITHUB_APP_PRIVATE_KEY="$(cat mindset-ctx.private-key.pem)"
+node dist/cli.js app token <installation-id>   # token 1h, scope = repos accordés
+```
+
+Le token imprimé s'utilise comme n'importe quel token GitHub pour cloner
+(`git clone https://x-access-token:<token>@github.com/owner/repo.git`) ou
+appeler l'API REST.
 
 ## Développement
 
@@ -188,7 +205,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.8 — **page pricing publique** (`/pricing`), **signup self-service** (`/v1/signup?plan=…`) et **`ctx stripe bootstrap`** auto-créent les produits/prix dans Stripe.
 - [x] v0.9 — **hébergé sur Cloudflare Workers** (`src/worker/`, `wrangler.toml`) : gratuit (100k req/j), edge, sans carte bancaire, état multi-tenant dans KV. `.github/workflows/deploy-cloudflare.yml` déploie sur chaque push vers `main`.
 - [x] v0.9 — **`ctx stripe webhook <url>`** crée (ou réutilise, idempotent) le webhook Stripe par API — plus besoin d'accéder au Dashboard Stripe à la main.
-- [ ] Token d'installation GitHub App (lecture des repos privés en mode hébergé)
+- [x] v0.10 — **provisioning automatique par install GitHub App** (`/v1/app/webhook` crée/retire le tenant, `/v1/app/installed` remet la clé) + **`ctx app token <installation-id>`** mint un token d'installation (JWT App signé RS256 → échange) pour lire les repos privés accordés.
 - [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
 
 ## Déploiement en production (0 → premier euro)

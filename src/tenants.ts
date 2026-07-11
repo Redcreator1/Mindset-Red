@@ -61,6 +61,21 @@ export class TenantStore {
     return key ? this.byKey.get(key) ?? null : null;
   }
 
+  /** Find the tenant created by a given GitHub App installation, if any. */
+  findByInstallationId(installationId: number): Tenant | null {
+    for (const t of this.byKey.values()) {
+      if (t.installationId === installationId) return t;
+    }
+    return null;
+  }
+
+  /** Remove a tenant by key; persists if file-backed. Returns whether it existed. */
+  remove(key: string): boolean {
+    const existed = this.byKey.delete(key);
+    if (existed) this.persist();
+    return existed;
+  }
+
   /** Change a tenant's plan (from a Stripe event); persists if file-backed. */
   setPlan(key: string, plan: PlanId): boolean {
     const tenant = this.byKey.get(key);
