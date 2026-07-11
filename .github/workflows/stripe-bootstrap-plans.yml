@@ -1,0 +1,42 @@
+name: Stripe — bootstrap plans
+
+# One-shot, manual: creates (or reuses) the Pro/Team products+prices in
+# Stripe using only the already-stored CTX_STRIPE_API_KEY secret — no Stripe
+# Dashboard access required. Prints STRIPE_PRICE_MAP ready to paste as a
+# GitHub Actions secret, which is what unlocks the "Passer Pro"/"Passer Team"
+# buttons on /pricing (they render disabled until STRIPE_PRICE_MAP maps at
+# least one Stripe price to that plan).
+#
+# Idempotent by product name: safe to re-run, reuses existing products/prices
+# instead of duplicating them.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Create or reuse the Stripe products + prices
+        env:
+          CTX_STRIPE_API_KEY: ${{ secrets.CTX_STRIPE_API_KEY }}
+        run: |
+          set -euo pipefail
+          node dist/cli.js stripe bootstrap
+          echo ""
+          echo "=========================================================="
+          echo "Copy the STRIPE_PRICE_MAP= line above and save it as a GitHub"
+          echo "Actions secret named STRIPE_PRICE_MAP (paste only the JSON value,"
+          echo "not the STRIPE_PRICE_MAP= prefix), then re-run 'Deploy to"
+          echo "Cloudflare Workers':"
+          echo "  https://github.com/${{ github.repository }}/settings/secrets/actions"
