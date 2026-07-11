@@ -15,6 +15,8 @@ export interface Tenant {
   plan?: PlanId;
   /** Explicit override of the plan's daily quota (optional). */
   dailyLimit?: number;
+  /** GitHub App installation id, set when this tenant was created by an App install. */
+  installationId?: number;
 }
 
 /** Resolve the effective daily quota for a tenant (override > plan). */

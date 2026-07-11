@@ -11,7 +11,9 @@ import {
   verifyStripeSignature, resolveSubscriptionEvent,
 } from "../billing.js";
 import { TenantStore, tenantDailyLimit, parseTenants } from "../tenants.js";
-import { buildAppManifest, classifyAppEvent } from "../githubapp.js";
+import { generateKeyPairSync, createVerify } from "node:crypto";
+import { createServer as createHttpServer } from "node:http";
+import { buildAppManifest, classifyAppEvent, getInstallationToken, mintAppJwt } from "../githubapp.js";
 import { createContextServer } from "../server.js";
 import { indexCommits, writeMemory } from "../memory.js";
 
@@ -133,6 +135,51 @@ test("classifyAppEvent maps installation lifecycle events", () => {
   assert.equal(classifyAppEvent("installation", { action: "created" }).kind, "ignored", "no installation id");
 });
 
+test("mintAppJwt signs a valid RS256 JWT carrying the App id", () => {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const now = 1_800_000_000_000;
+  const jwt = mintAppJwt("123456", privateKey.export({ type: "pkcs1", format: "pem" }).toString(), now);
+
+  const [headerB64, payloadB64, sigB64] = jwt.split(".");
+  const header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf8"));
+  const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+  assert.equal(header.alg, "RS256");
+  assert.equal(payload.iss, "123456");
+  assert.equal(payload.exp - payload.iat, 600, "GitHub's max App JWT lifetime");
+  assert.equal(Math.floor(now / 1000) - payload.iat, 60, "iat backdated for clock drift");
+
+  const verifier = createVerify("RSA-SHA256");
+  verifier.update(`${headerB64}.${payloadB64}`);
+  assert.equal(
+    verifier.verify(publicKey.export({ type: "pkcs1", format: "pem" }), Buffer.from(sigB64, "base64url")),
+    true,
+    "signature verifies against the matching public key",
+  );
+});
+
+test("getInstallationToken exchanges the App JWT for a scoped installation token", async () => {
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const pem = privateKey.export({ type: "pkcs1", format: "pem" }).toString();
+  let capturedAuth: string | undefined;
+  const mock = createHttpServer((req, res) => {
+    capturedAuth = req.headers.authorization;
+    assert.equal(req.url, "/app/installations/42/access_tokens");
+    assert.equal(req.method, "POST");
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ token: "ghs_abc123", expires_at: "2026-01-01T00:00:00Z" }));
+  });
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseUrl = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  try {
+    const result = await getInstallationToken("123456", pem, 42, baseUrl);
+    assert.equal(result.token, "ghs_abc123");
+    assert.equal(result.expiresAt, "2026-01-01T00:00:00Z");
+    assert.match(capturedAuth!, /^Bearer [\w-]+\.[\w-]+\.[\w-]+$/, "authenticates with a 3-part JWT");
+  } finally {
+    mock.close();
+  }
+});
+
 // ---------- end-to-end over HTTP ----------
 
 function makeRepo(name: string): string {
@@ -225,6 +272,74 @@ test("App manifest served and App webhook classifies installs", async () => {
     const result = await ok.json() as { outcome: { kind: string; account: string } };
     assert.equal(result.outcome.kind, "installed");
     assert.equal(result.outcome.account, "acme");
+  } finally {
+    server.close();
+  }
+});
+
+test("App install auto-provisions a tenant; /v1/app/installed hands over its key", async () => {
+  const repo = makeRepo("appinstall");
+  const store = new TenantStore([]);
+  const webhookSecret = "wh";
+  const server = createContextServer({ appinstall: repo }, { tenantStore: store, webhookSecret, appBaseUrl: "https://ctx.example.com" });
+  const base = await listen(server);
+  const sign = (b: string) => "sha256=" + createHmac("sha256", webhookSecret).update(b).digest("hex");
+  const installedPayload = JSON.stringify({
+    action: "created", installation: { id: 99, account: { login: "acme" } }, repositories: [{ full_name: "acme/web" }],
+  });
+
+  try {
+    // Not provisioned yet → 202, holding page.
+    const notYet = await fetch(`${base}/v1/app/installed?installation_id=99`);
+    assert.equal(notYet.status, 202);
+
+    // Webhook fires (as GitHub would, right after redirecting the browser).
+    const hook = await fetch(`${base}/v1/app/webhook`, {
+      method: "POST",
+      headers: { "x-github-event": "installation", "x-hub-signature-256": sign(installedPayload) },
+      body: installedPayload,
+    });
+    assert.equal(hook.status, 200);
+
+    const tenant = store.findByInstallationId(99);
+    assert.ok(tenant, "tenant was auto-provisioned");
+    assert.equal(tenant!.plan, "free");
+    assert.deepEqual(tenant!.repos, ["acme/web"]);
+
+    // Re-running the same install is idempotent — no duplicate tenant / key.
+    await fetch(`${base}/v1/app/webhook`, {
+      method: "POST",
+      headers: { "x-github-event": "installation", "x-hub-signature-256": sign(installedPayload) },
+      body: installedPayload,
+    });
+    assert.equal(store.all().filter((t) => t.installationId === 99).length, 1);
+
+    // Now the redirect page hands over the key, once.
+    const redirected = await fetch(`${base}/v1/app/installed?installation_id=99`);
+    assert.equal(redirected.status, 200);
+    const html = await redirected.text();
+    assert.ok(html.includes(tenant!.key));
+    assert.ok(html.includes("acme/web"), "granted repos are listed for trust");
+    assert.ok(/lecture seule/i.test(html), "read-only scope is called out");
+    assert.ok(!html.includes("Paiement validé"), "install page must not reuse the payment success copy");
+
+    // installation_repositories: added/removed narrows the tenant's scope.
+    const addedPayload = JSON.stringify({ installation: { id: 99, account: { login: "acme" } }, repositories_added: [{ full_name: "acme/api" }] });
+    await fetch(`${base}/v1/app/webhook`, {
+      method: "POST",
+      headers: { "x-github-event": "installation_repositories", "x-hub-signature-256": sign(addedPayload) },
+      body: addedPayload,
+    });
+    assert.deepEqual((store.findByInstallationId(99)!.repos as string[]).sort(), ["acme/api", "acme/web"]);
+
+    // Uninstall removes the tenant entirely.
+    const deletedPayload = JSON.stringify({ action: "deleted", installation: { id: 99, account: { login: "acme" } } });
+    await fetch(`${base}/v1/app/webhook`, {
+      method: "POST",
+      headers: { "x-github-event": "installation", "x-hub-signature-256": sign(deletedPayload) },
+      body: deletedPayload,
+    });
+    assert.equal(store.findByInstallationId(99), null);
   } finally {
     server.close();
   }

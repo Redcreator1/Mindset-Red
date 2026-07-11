@@ -13,10 +13,10 @@ import { hybridSearch } from "./hybrid.js";
 import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
 import { loadPriceMap, type PlanId } from "./billing.js";
-import { buildAppManifest, installUrlHint } from "./githubapp.js";
+import { buildAppManifest, getInstallationToken, installUrlHint } from "./githubapp.js";
 import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.9.1";
+const VERSION = "0.10.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -55,6 +55,14 @@ Usage:
   ctx app manifest [--base-url URL]
                                Print the GitHub App manifest (JSON) for
                                one-click App creation
+  ctx app token <installation-id>
+                               Mint a short-lived (1h) installation access
+                               token for reading that installation's private
+                               repos. Needs GITHUB_APP_ID +
+                               GITHUB_APP_PRIVATE_KEY (the App's PEM key).
+                               Installs auto-provision a tenant (see
+                               /v1/app/webhook) whose key you'll find via
+                               /v1/app/installed?installation_id=…
   ctx checkout --plan pro [--key KEY] [--success URL] [--cancel URL]
                                Mint a tenant key (unless --key is given) and
                                create a Stripe Checkout link to subscribe it.
@@ -292,7 +300,7 @@ async function cmdStripe(argv: string[]): Promise<void> {
   process.exit(1);
 }
 
-function cmdApp(argv: string[]): void {
+async function cmdApp(argv: string[]): Promise<void> {
   const sub = positionals(argv)[0];
   const baseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL ?? "https://your-host.example.com";
   if (sub === "manifest" || sub === undefined) {
@@ -300,7 +308,26 @@ function cmdApp(argv: string[]): void {
     console.error(`\n${installUrlHint(baseUrl)}`);
     return;
   }
-  console.error(`Unknown app subcommand '${sub}'. Try: ctx app manifest`);
+  if (sub === "token") {
+    const installationId = Number(positionals(argv)[1]);
+    const appId = process.env.GITHUB_APP_ID;
+    const privateKey = process.env.GITHUB_APP_PRIVATE_KEY;
+    if (!installationId) {
+      console.error("Usage: ctx app token <installation-id>");
+      process.exit(1);
+    }
+    if (!appId || !privateKey) {
+      console.error("ctx app token needs GITHUB_APP_ID and GITHUB_APP_PRIVATE_KEY (the App's PEM private key) set.");
+      process.exit(1);
+    }
+    const result = await getInstallationToken(appId, privateKey, installationId);
+    console.error(`Installation token for installation ${installationId} (expires ${result.expiresAt}):`);
+    console.log(result.token);
+    console.error(`\nUse it to clone a private repo it covers:`);
+    console.error(`  git clone https://x-access-token:${result.token}@github.com/OWNER/REPO.git`);
+    return;
+  }
+  console.error(`Unknown app subcommand '${sub}'. Try: ctx app manifest | ctx app token <installation-id>`);
   process.exit(1);
 }
 
@@ -321,7 +348,7 @@ switch (command) {
     cmdServe(rest);
     break;
   case "app":
-    cmdApp(rest);
+    await cmdApp(rest);
     break;
   case "checkout":
     await cmdCheckout(rest);

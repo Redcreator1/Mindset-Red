@@ -13,7 +13,7 @@ import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from ".
 import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
 import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
-import { renderPricing, renderSuccess } from "./pricing.js";
+import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -317,7 +317,60 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         return;
       }
       const outcome = classifyAppEvent(event, payload);
+      // Provision (or deprovision) a tenant from the installation lifecycle —
+      // this is the App-install equivalent of /v1/signup: no pre-existing
+      // account needed, the install itself grants a scoped API key.
+      if (outcome.kind === "installed") {
+        const existing = store.findByInstallationId(outcome.installationId);
+        if (!existing) {
+          store.upsert({
+            key: newTenantKey(),
+            name: outcome.account,
+            repos: outcome.repos.length ? outcome.repos : "*",
+            plan: "free",
+            installationId: outcome.installationId,
+          });
+        }
+      } else if (outcome.kind === "uninstalled") {
+        const tenant = store.findByInstallationId(outcome.installationId);
+        if (tenant) store.remove(tenant.key);
+      } else if (outcome.kind === "repos-added" || outcome.kind === "repos-removed") {
+        const tenant = store.findByInstallationId(outcome.installationId);
+        if (tenant && tenant.repos !== "*") {
+          const scoped = new Set(tenant.repos);
+          for (const r of outcome.repos) {
+            if (outcome.kind === "repos-added") scoped.add(r);
+            else scoped.delete(r);
+          }
+          store.upsert({ ...tenant, repos: [...scoped] });
+        }
+      }
       sendJson(res, 200, { ok: true, event, outcome });
+      return;
+    }
+
+    // Browser lands here right after installing the GitHub App (the
+    // manifest's redirect_url). The webhook above usually arrives first and
+    // already minted the tenant; look it up by installation id and hand over
+    // the key exactly once, mirroring the Stripe /v1/signup/success page.
+    if (path === "/v1/app/installed") {
+      const rawInstallationId = url.searchParams.get("installation_id") ?? "";
+      const installationId = Number(rawInstallationId);
+      const tenant = installationId ? store.findByInstallationId(installationId) : null;
+      const refreshHref = `${path}?${new URLSearchParams({ installation_id: rawInstallationId }).toString()}`;
+      res.writeHead(tenant ? 200 : 202, { "content-type": "text/html; charset=utf-8" });
+      res.end(
+        tenant
+          ? renderAppInstalled({ tenantKey: tenant.key, account: tenant.name, repos: tenant.repos })
+          : `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Installation en cours — mindset-ctx</title>
+             <meta http-equiv="refresh" content="2;url=${refreshHref}"></head>
+             <body style="margin:0;font:15px system-ui;background:#0b1220;color:#e2e8f0;padding:48px 32px">
+             <main style="max-width:640px;margin:0 auto;background:#111a2e;border:1px solid #1e293b;border-radius:14px;padding:32px">
+             <h1 style="margin:0 0 16px;font-size:22px">⏳ Installation en cours de finalisation</h1>
+             <p>GitHub nous a confirmé l'installation ; on attend juste la confirmation du webhook, quelques secondes en général.</p>
+             <p>Cette page se rafraîchit automatiquement — vous pouvez aussi <a href="${refreshHref}" style="color:#60a5fa">cliquer ici</a>.</p>
+             </main></body></html>`,
+      );
       return;
     }
 
