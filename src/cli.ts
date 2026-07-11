@@ -14,9 +14,9 @@ import { loadMemory, searchMemory } from "./memory.js";
 import { TenantStore } from "./tenants.js";
 import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, installUrlHint } from "./githubapp.js";
-import { bootstrapStripePlans, createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
+import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -63,6 +63,13 @@ Usage:
   ctx stripe bootstrap         Create the Pro/Team products+prices in Stripe
                                (idempotent) and print STRIPE_PRICE_MAP ready
                                to paste. Needs CTX_STRIPE_API_KEY.
+  ctx stripe webhook <url>     Create (or reuse) a Stripe webhook endpoint
+                               pointed at <url>/v1/stripe/webhook, idempotent
+                               by URL, and print CTX_STRIPE_SECRET ready to
+                               paste. Needs CTX_STRIPE_API_KEY. No Stripe
+                               Dashboard access required — this is the
+                               scriptable replacement for creating the
+                               webhook by hand.
   ctx analyze [path]           Print the raw repo analysis as JSON
   ctx mcp [path]               Run an MCP (Model Context Protocol) server over
                                stdio exposing get_context, search_memory and
@@ -248,18 +255,41 @@ async function cmdCheckout(argv: string[]): Promise<void> {
 
 async function cmdStripe(argv: string[]): Promise<void> {
   const sub = positionals(argv)[0];
-  if (sub !== "bootstrap") {
-    console.error("Usage: ctx stripe bootstrap");
-    process.exit(1);
-  }
   const secretKey = process.env.CTX_STRIPE_API_KEY;
   if (!secretKey) {
-    console.error("ctx stripe bootstrap needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).");
+    console.error(`ctx stripe ${sub ?? ""} needs CTX_STRIPE_API_KEY (your Stripe secret key sk_...).`);
     process.exit(1);
   }
-  const map = await bootstrapStripePlans(secretKey);
-  console.error("Created/reused Stripe products + prices. Paste this into your env:");
-  console.log(`STRIPE_PRICE_MAP='${JSON.stringify(map)}'`);
+
+  if (sub === "bootstrap") {
+    const map = await bootstrapStripePlans(secretKey);
+    console.error("Created/reused Stripe products + prices. Paste this into your env:");
+    console.log(`STRIPE_PRICE_MAP='${JSON.stringify(map)}'`);
+    return;
+  }
+
+  if (sub === "webhook") {
+    const url = positionals(argv)[1];
+    if (!url) {
+      console.error("Usage: ctx stripe webhook <https://your-host/v1/stripe/webhook>");
+      process.exit(1);
+    }
+    const result = await ensureStripeWebhook(secretKey, url);
+    if (result.created) {
+      console.error(`Created webhook endpoint ${result.id} for ${result.url}. Save this as CTX_STRIPE_SECRET:`);
+      console.log(`CTX_STRIPE_SECRET='${result.secret}'`);
+    } else {
+      console.error(
+        `Endpoint ${result.id} already targets ${result.url} — Stripe never re-exposes its signing ` +
+          `secret, so no new CTX_STRIPE_SECRET was printed. If you've lost it, delete the endpoint in the ` +
+          `Stripe Dashboard and re-run this command to mint a fresh one.`,
+      );
+    }
+    return;
+  }
+
+  console.error("Usage: ctx stripe bootstrap | ctx stripe webhook <url>");
+  process.exit(1);
 }
 
 function cmdApp(argv: string[]): void {

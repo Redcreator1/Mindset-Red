@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
-import { createCheckoutSession, encodeForm, newTenantKey, priceForPlan } from "../checkout.js";
+import { createCheckoutSession, encodeForm, ensureStripeWebhook, newTenantKey, priceForPlan } from "../checkout.js";
 import { createContextServer } from "../server.js";
 import { TenantStore } from "../tenants.js";
 import { indexCommits, writeMemory } from "../memory.js";
@@ -77,6 +77,84 @@ test("createCheckoutSession surfaces Stripe errors", async () => {
       () => createCheckoutSession({ secretKey: "sk", priceId: "bad", tenantKey: "t", successUrl: "a", cancelUrl: "b", baseURL }),
       /Stripe checkout 400/,
     );
+  } finally {
+    mock.close();
+  }
+});
+
+// ---- ensureStripeWebhook ----
+
+function startWebhookMock() {
+  const endpoints: { id: string; url: string; enabled_events: string[] }[] = [];
+  const mock = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      res.setHeader("content-type", "application/json");
+      const url = new URL(req.url ?? "/", "http://localhost");
+      if (req.method === "GET" && url.pathname === "/v1/webhook_endpoints") {
+        res.end(JSON.stringify({ data: endpoints }));
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/v1/webhook_endpoints") {
+        const params = new URLSearchParams(body);
+        const created = {
+          id: `we_${endpoints.length + 1}`,
+          url: params.get("url")!,
+          enabled_events: params.getAll("enabled_events[]"),
+        };
+        endpoints.push(created);
+        res.end(JSON.stringify({ ...created, secret: `whsec_${created.id}` }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: `unhandled ${req.method} ${url.pathname}` }));
+    });
+  });
+  return { mock, endpoints };
+}
+
+test("ensureStripeWebhook creates an endpoint and returns its signing secret", async () => {
+  const { mock } = startWebhookMock();
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseURL = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  try {
+    const result = await ensureStripeWebhook("sk_test_x", "https://app.example.com/v1/stripe/webhook", undefined, baseURL);
+    assert.equal(result.created, true);
+    assert.equal(result.url, "https://app.example.com/v1/stripe/webhook");
+    assert.match(result.secret!, /^whsec_/);
+  } finally {
+    mock.close();
+  }
+});
+
+test("ensureStripeWebhook sends the requested events as enabled_events[]", async () => {
+  const { mock, endpoints } = startWebhookMock();
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseURL = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  try {
+    await ensureStripeWebhook("sk_test_x", "https://app.example.com/hook", ["customer.subscription.created"], baseURL);
+    assert.deepEqual(endpoints[0].enabled_events, ["customer.subscription.created"]);
+  } finally {
+    mock.close();
+  }
+});
+
+test("ensureStripeWebhook is idempotent by URL: second call reuses, doesn't duplicate, secret is null", async () => {
+  const { mock, endpoints } = startWebhookMock();
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseURL = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  const url = "https://app.example.com/v1/stripe/webhook";
+  try {
+    const first = await ensureStripeWebhook("sk_test_x", url, undefined, baseURL);
+    assert.equal(first.created, true);
+    assert.ok(first.secret);
+
+    const second = await ensureStripeWebhook("sk_test_x", url, undefined, baseURL);
+    assert.equal(second.created, false);
+    assert.equal(second.id, first.id);
+    assert.equal(second.secret, null, "Stripe never re-exposes a signing secret on an existing endpoint");
+    assert.equal(endpoints.length, 1, "no duplicate endpoint created");
   } finally {
     mock.close();
   }

@@ -150,6 +150,58 @@ async function ensurePrice(secretKey: string, productId: string, spec: StripePla
   return created.id;
 }
 
+export interface WebhookEndpointResult {
+  id: string;
+  url: string;
+  /**
+   * Signing secret (whsec_...) — only present when this call just created
+   * the endpoint. Stripe never re-exposes a signing secret after creation,
+   * so on an already-existing endpoint this is null; the caller must
+   * already hold that secret (e.g. as CTX_STRIPE_SECRET).
+   */
+  secret: string | null;
+  created: boolean;
+}
+
+export const DEFAULT_WEBHOOK_EVENTS = [
+  "customer.subscription.created",
+  "customer.subscription.updated",
+  "customer.subscription.deleted",
+];
+
+/**
+ * Idempotently ensure a Stripe webhook endpoint exists for `url`. Idempotent
+ * by URL: re-running against the same URL reuses the existing endpoint
+ * instead of creating a duplicate. This is what lets `ctx stripe webhook`
+ * run safely from CI on every deploy, using only the already-configured
+ * CTX_STRIPE_API_KEY — no Stripe Dashboard access required.
+ */
+export async function ensureStripeWebhook(
+  secretKey: string,
+  url: string,
+  events: string[] = DEFAULT_WEBHOOK_EVENTS,
+  baseURL = "https://api.stripe.com",
+): Promise<WebhookEndpointResult> {
+  const base = baseURL.replace(/\/+$/, "");
+  const list = await stripeGet<{ data: { id: string; url: string }[] }>(
+    secretKey,
+    `${base}/v1/webhook_endpoints?limit=100`,
+  );
+  const existing = list.data.find((e) => e.url === url);
+  if (existing) return { id: existing.id, url: existing.url, secret: null, created: false };
+
+  const body =
+    events.map((e) => `enabled_events[]=${encodeURIComponent(e)}`).join("&") + `&url=${encodeURIComponent(url)}`;
+  const res = await fetch(`${base}/v1/webhook_endpoints`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${secretKey}`, "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (!res.ok) throw new Error(`Stripe POST /v1/webhook_endpoints → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const created = (await res.json()) as { id: string; url: string; secret: string };
+  return { id: created.id, url: created.url, secret: created.secret, created: true };
+}
+
 async function stripeGet<T>(secretKey: string, url: string): Promise<T> {
   const res = await fetch(url, { headers: { authorization: `Bearer ${secretKey}` } });
   if (!res.ok) throw new Error(`Stripe GET ${url} → ${res.status}: ${(await res.text()).slice(0, 200)}`);

@@ -58,7 +58,10 @@ export default {
     const store = new KvTenantStore(env.CTX_KV);
     const meter = new KvUsageMeter(env.CTX_KV);
     const priceMap = loadPriceMap(env.STRIPE_PRICE_MAP);
-    const baseUrl = env.CTX_BASE_URL ?? `${url.protocol}//${url.host}`;
+    // `||` (not `??`) on purpose: an unset CTX_BASE_URL var deploys as "" in
+    // Cloudflare, not undefined, so `??` would never fall through and every
+    // Stripe redirect URL would end up relative — which Stripe rejects.
+    const baseUrl = env.CTX_BASE_URL || `${url.protocol}//${url.host}`;
 
     // ---------- Public routes ----------
     if (path === "/" || path === "/pricing") {

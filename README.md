@@ -185,34 +185,48 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.6 — **recherche hybride** BM25 + embeddings fusionnés par Reciprocal Rank Fusion (`mode=hybrid`, `ctx search --hybrid`)
 - [x] v0.6 — **dashboard web** auto-porté (`/v1/dashboard`) : repos, tenants, plans, quotas et mémoire, scopé par tenant
 - [x] v0.7 — **checkout Stripe** : `ctx checkout` / `GET /v1/checkout` créent un lien de paiement (clé tenant estampée dans les métadonnées) — la porte d'entrée « premier euro »
-- [x] v0.8 — **page pricing publique** (`/pricing`), **signup self-service** (`/v1/signup?plan=…`) et **`ctx stripe bootstrap`** auto-créent les produits/prix dans Stripe. **Dockerfile + fly.toml** livrés — déploiement zéro-configuration.
+- [x] v0.8 — **page pricing publique** (`/pricing`), **signup self-service** (`/v1/signup?plan=…`) et **`ctx stripe bootstrap`** auto-créent les produits/prix dans Stripe.
+- [x] v0.9 — **hébergé sur Cloudflare Workers** (`src/worker/`, `wrangler.toml`) : gratuit (100k req/j), edge, sans carte bancaire, état multi-tenant dans KV. `.github/workflows/deploy-cloudflare.yml` déploie sur chaque push vers `main`.
+- [x] v0.9 — **`ctx stripe webhook <url>`** crée (ou réutilise, idempotent) le webhook Stripe par API — plus besoin d'accéder au Dashboard Stripe à la main.
 - [ ] Token d'installation GitHub App (lecture des repos privés en mode hébergé)
 - [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
 
 ## Déploiement en production (0 → premier euro)
 
-Runbook zéro-configuration pour partir en ligne cette nuit :
+Le mode hébergé tourne sur **Cloudflare Workers** (gratuit, sans carte bancaire,
+100 000 requêtes/jour). Runbook zéro-configuration :
 
 ```bash
 # 1. Créer les produits/prix Stripe (idempotent)
 export CTX_STRIPE_API_KEY=sk_live_...
 node dist/cli.js stripe bootstrap    # → imprime STRIPE_PRICE_MAP='{...}'
 
-# 2. Déployer sur Fly.io (Dockerfile + fly.toml livrés)
-fly launch --copy-config --dockerfile Dockerfile
-fly volumes create ctx_data --size 1
-fly secrets set CTX_STRIPE_API_KEY=sk_live_... \
-                CTX_STRIPE_SECRET=whsec_... \
-                STRIPE_PRICE_MAP='{"price_...":"pro","price_...":"team"}' \
-                CTX_WEBHOOK_SECRET=$(openssl rand -hex 32)
-fly deploy
+# 2. Déployer sur Cloudflare Workers (wrangler.toml livré, KV créé une fois)
+npx wrangler kv namespace create CTX_KV     # une seule fois ; colle l'id dans wrangler.toml
+npx wrangler secret put CTX_STRIPE_API_KEY
+npx wrangler secret put STRIPE_PRICE_MAP
+npx wrangler deploy
 
-# 3. Brancher le webhook Stripe sur https://<app>.fly.dev/v1/stripe/webhook
+# 3. Créer le webhook Stripe SANS toucher au Dashboard (idempotent, réutilise
+#    l'endpoint s'il existe déjà) :
+node dist/cli.js stripe webhook https://<ton-worker>.workers.dev/v1/stripe/webhook
+#    → imprime CTX_STRIPE_SECRET='whsec_...' à coller :
+npx wrangler secret put CTX_STRIPE_SECRET
+npx wrangler deploy
+
 # 4. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
 #    API est activée automatiquement par le webhook. Zéro humain dans la boucle.
 ```
 
+**Via GitHub Actions (recommandé, zéro terminal)** : configure les secrets
+`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `CTX_STRIPE_API_KEY`,
+`STRIPE_PRICE_MAP` sur le repo, lance le workflow **Deploy to Cloudflare
+Workers**, puis le workflow **Stripe — bootstrap webhook** (crée le webhook
+via l'API Stripe avec la clé déjà configurée — aucun accès au Dashboard
+requis) et colle le `CTX_STRIPE_SECRET` imprimé dans les secrets GitHub avant
+de relancer le déploiement.
+
 > **Repo privé, code sensible ?** Aucun code source ne quitte votre machine
 > par défaut : `ctx generate` / `index` / `serve` tournent en local. Le mode
-> hébergé sert uniquement l'analyse structurée + les fichiers de contexte
-> déjà générés — jamais le code lui-même.
+> hébergé (Worker) sert uniquement l'analyse structurée + les fichiers de
+> contexte déjà générés — jamais le code lui-même.
