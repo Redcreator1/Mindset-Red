@@ -2,8 +2,9 @@
   "name": "mindset-ctx",
   "displayName": "mindset-ctx",
   "description": "Generate and keep AI context files (CLAUDE.md, AGENTS.md, architecture docs) fresh, and wire the MCP server into Claude Code / Cursor, without leaving the editor.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "mindset-ctx",
+  "icon": "icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",

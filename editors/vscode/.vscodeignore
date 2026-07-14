@@ -1,6 +1,7 @@
 .vscode/**
 src/**
 dist/test/**
+icon.svg
 .gitignore
 tsconfig.json
 **/*.map
