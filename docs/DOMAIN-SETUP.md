@@ -6,7 +6,7 @@
 
 ## ⚠️ À savoir avant d'acheter
 
-Le Worker Cloudflare qui sert mindset-ctx (`mindset-ctx.mindsetredcom.workers.dev`)
+Le Worker Cloudflare qui sert mindset-ctx (`mindset-ctx.mindset2026.workers.dev`)
 ne peut recevoir un domaine personnalisé ("Custom Domain") que si ce domaine
 est **géré par Cloudflare** (nameservers pointés vers Cloudflare). Deux
 chemins possibles :

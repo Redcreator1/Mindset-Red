@@ -13,7 +13,7 @@ compatibility_flags = ["nodejs_compat"]
 # first successful deploy's *.workers.dev subdomain; update this if you
 # bind a custom domain instead.
 [vars]
-CTX_BASE_URL = "https://mindset-ctx.mindsetredcom.workers.dev"
+CTX_BASE_URL = "https://mindset-ctx.mindset2026.workers.dev"
 
 # KV namespace holding tenants + daily usage counters.
 # Created out-of-band once (via the Cloudflare dashboard or MCP connector).
