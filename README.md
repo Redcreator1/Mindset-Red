@@ -124,6 +124,18 @@ des outils que l'agent Cursor peut appeler directement pendant une session de
 vibe coding. (Le nom exact du fichier de config peut évoluer selon la version
 de Cursor — vérifiez leur doc officielle MCP si l'emplacement a changé.)
 
+**Extension VS Code** (`editors/vscode/`, pas encore publiée sur le
+Marketplace — mindset-ctx lui-même n'est pas encore sur npm, voir plus bas)
+: palette de commandes ("mindset-ctx: Generate Context Files", "… Index
+Memory", "… Copy MCP Server Command", "… Open Hosted Dashboard") + indicateur
+dans la barre de statut (`CLAUDE.md` présent ou non). Se teste en local via
+`F5` (Extension Development Host) ou en `.vsix` — voir
+`editors/vscode/README.md` pour le détail, y compris la limite honnête :
+la logique pure (construction de commande MCP, texte de statut) est testée
+par `node:test`, mais le code qui appelle l'API `vscode` elle-même ne l'est
+pas — `@vscode/test-electron` a besoin de télécharger un vrai binaire VS Code
+et d'un serveur d'affichage, indisponibles dans ce sandbox.
+
 ### API
 
 | Route | Description |
@@ -300,7 +312,8 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.14 — **Teams multi-sièges** : signup Team crée une organisation (facturation + quota partagés, pas par siège) avec le premier compte en `role: "owner"` ; `/v1/team/invite` et `/v1/team/remove` gèrent le roster ; `/v1/checkout` refusé aux non-owners ; dashboard scopé (owner → son équipe, admin → toute la plateforme). C'est le prérequis RBAC identifié en v0.13 — désormais construit, sur Node **et** Cloudflare Workers.
 - [x] v0.15 — **parité GitHub App sur le Worker Cloudflare réellement déployé** : `/v1/app/manifest`, `/v1/app/webhook` (HMAC vérifiée via Web Crypto) et `/v1/app/installed` n'existaient que sur `server.ts` (self-hosted) depuis la v0.10, malgré ce que le changelog laissait entendre — le Worker en prod n'avait jamais le provisioning auto par install. Corrigé : les trois routes tournent maintenant sur KV (`store.findByInstallationId`), `CTX_WEBHOOK_SECRET` poussé par `.github/workflows/deploy-cloudflare.yml`.
 - [x] v0.16 — **SSO Entreprise via WorkOS AuthKit** : `/v1/sso/login` (redirige vers la connexion hébergée), `/v1/sso/callback` (échange le code, auto-provisionne organisation + tenant à partir de l'`organization_id`/`user.id` WorkOS, pose un cookie de session signé), `/v1/sso/logout`. Premier employé d'une entreprise → owner, suivants → members poolés, symétrique du signup Stripe et de l'install GitHub App. Le cookie de session est vérifié par HMAC (signé avec la clé API WorkOS) sans store de session dédié — cohérent avec l'architecture stateless existante. Parité Node **et** Cloudflare Workers dès le départ.
-- [ ] Extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
+- [x] v0.17 — **extension VS Code** (`editors/vscode/`) : commandes de palette pour générer le contexte/indexer la mémoire, copier la commande MCP, ouvrir le dashboard hébergé ; indicateur de statut (`CLAUDE.md` présent ou non). Package séparé (son propre `package.json`/`tsconfig.json`, manifeste VS Code différent du reste du projet). Pas encore publiée sur le Marketplace (nécessite un compte éditeur Microsoft/Azure DevOps, gratuit — décision différée à l'utilisateur). 6 tests sur la logique pure ; la partie qui appelle l'API `vscode` se vérifie manuellement via `F5`, pas par une suite automatisée (`@vscode/test-electron` a besoin d'un vrai binaire VS Code + d'un display, indisponibles dans ce sandbox).
+- [ ] Extension JetBrains (stack différente : Kotlin/Gradle plutôt que TypeScript — mérite sa propre session) ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
 

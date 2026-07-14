@@ -1,0 +1,55 @@
+{
+  "name": "mindset-ctx",
+  "displayName": "mindset-ctx",
+  "description": "Generate and keep AI context files (CLAUDE.md, AGENTS.md, architecture docs) fresh, and wire the MCP server into Claude Code / Cursor, without leaving the editor.",
+  "version": "0.1.0",
+  "publisher": "mindset-ctx",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Redcreator1/Mindset-Red"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Machine Learning"],
+  "keywords": ["ai", "context", "claude", "cursor", "mcp", "claude.md"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "mindsetCtx.generate", "title": "mindset-ctx: Generate Context Files" },
+      { "command": "mindsetCtx.index", "title": "mindset-ctx: Index Memory (git + PRs/issues)" },
+      { "command": "mindsetCtx.copyMcpConfig", "title": "mindset-ctx: Copy MCP Server Command" },
+      { "command": "mindsetCtx.openDashboard", "title": "mindset-ctx: Open Hosted Dashboard" }
+    ],
+    "configuration": {
+      "title": "mindset-ctx",
+      "properties": {
+        "mindsetCtx.cliCommand": {
+          "type": "string",
+          "default": "",
+          "description": "How to invoke the mindset-ctx CLI (e.g. \"ctx\" if installed globally/npm-linked, or \"node /path/to/mindset-ctx/dist/cli.js\"). Not published to npm yet, so this can't default to npx — you'll be prompted once and it's saved to workspace settings."
+        },
+        "mindsetCtx.dashboardUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Hosted dashboard URL (e.g. https://mindset-ctx.mindset2026.workers.dev/v1/dashboard). Leave empty if you only use mindset-ctx self-hosted."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.6.0"
+  }
+}
