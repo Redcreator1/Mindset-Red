@@ -5,8 +5,11 @@ import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "../githubapp.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "../workos.js";
-import { buildClearSessionCookieHeader, buildSessionCookieHeader, parseCookie, SESSION_COOKIE } from "../session.js";
-import { mintSessionTokenWeb, verifyGithubSignatureWeb, verifySessionTokenWeb, verifyStripeSignatureWeb } from "./hmac.js";
+import {
+  buildClearSessionCookieHeader, buildClearStateCookieHeader, buildSessionCookieHeader, buildStateCookieHeader,
+  newOauthState, parseCookie, OAUTH_STATE_COOKIE, SESSION_COOKIE,
+} from "../session.js";
+import { mintSessionTokenWeb, timingSafeEqualStr, verifyGithubSignatureWeb, verifySessionTokenWeb, verifyStripeSignatureWeb } from "./hmac.js";
 import {
   KvTenantStore,
   KvUsageMeter,
@@ -268,12 +271,20 @@ export default {
     // connection; omitted, WorkOS shows its general AuthKit login screen.
     if (path === "/v1/sso/login") {
       if (!env.WORKOS_CLIENT_ID) return json(503, { error: "SSO not configured — set WORKOS_CLIENT_ID" });
+      // OAuth state: a fresh nonce, echoed back by WorkOS and checked at the
+      // callback against this cookie — blocks login-CSRF (an attacker forcing
+      // a victim's browser through the callback with the attacker's code).
+      const state = newOauthState();
       const authUrl = buildWorkosAuthorizationUrl({
         clientId: env.WORKOS_CLIENT_ID,
         redirectUri: `${baseUrl}/v1/sso/callback`,
         organizationId: url.searchParams.get("org") ?? undefined,
+        state,
       });
-      return Response.redirect(authUrl, 302);
+      return new Response(null, {
+        status: 302,
+        headers: { location: authUrl, "set-cookie": buildStateCookieHeader(state) },
+      });
     }
 
     // SSO callback — exchanges WorkOS's one-time code for the user's identity,
@@ -285,6 +296,13 @@ export default {
       if (!env.WORKOS_CLIENT_ID || !env.WORKOS_API_KEY) return json(503, { error: "SSO not configured" });
       const code = url.searchParams.get("code");
       if (!code) return json(400, { error: "missing code" });
+      // The state echoed by WorkOS must match the nonce we set at login —
+      // otherwise this callback wasn't started by this browser. Reject it.
+      const returnedState = url.searchParams.get("state") ?? "";
+      const cookieState = parseCookie(req.headers.get("cookie"), OAUTH_STATE_COOKIE) ?? "";
+      if (!returnedState || !timingSafeEqualStr(returnedState, cookieState)) {
+        return json(403, { error: "state mismatch — restart the login from /v1/sso/login" });
+      }
       let identity;
       try {
         identity = await exchangeWorkosCode({ clientId: env.WORKOS_CLIENT_ID, apiKey: env.WORKOS_API_KEY, code });
@@ -311,10 +329,10 @@ export default {
         await store.upsert(ssoTenant);
       }
 
-      return new Response(null, {
-        status: 302,
-        headers: { location: `${baseUrl}/v1/dashboard`, "set-cookie": buildSessionCookieHeader(await mintSessionTokenWeb(ssoTenant.key, env.WORKOS_API_KEY)) },
-      });
+      const headers = new Headers({ location: `${baseUrl}/v1/dashboard` });
+      headers.append("set-cookie", buildSessionCookieHeader(await mintSessionTokenWeb(ssoTenant.key, env.WORKOS_API_KEY)));
+      headers.append("set-cookie", buildClearStateCookieHeader()); // one round-trip only — dead after use
+      return new Response(null, { status: 302, headers });
     }
 
     // SSO logout — clears the session cookie. Tenant keys aren't revoked (an

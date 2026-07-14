@@ -2,7 +2,7 @@
   "name": "mindset-ctx",
   "displayName": "mindset-ctx",
   "description": "Generate and keep AI context files (CLAUDE.md, AGENTS.md, architecture docs) fresh, and wire the MCP server into Claude Code / Cursor, without leaving the editor.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "mindset-ctx",
   "icon": "icon.png",
   "license": "MIT",
@@ -29,13 +29,15 @@
       "properties": {
         "mindsetCtx.cliCommand": {
           "type": "string",
-          "default": "",
-          "description": "How to invoke the mindset-ctx CLI (e.g. \"ctx\" if installed globally/npm-linked, or \"node /path/to/mindset-ctx/dist/cli.js\"). Not published to npm yet, so this can't default to npx — you'll be prompted once and it's saved to workspace settings."
+          "default": "npx mindset-ctx",
+          "scope": "machine",
+          "description": "How to invoke the mindset-ctx CLI (e.g. \"npx mindset-ctx\", \"ctx\" if installed globally, or \"node /path/to/mindset-ctx/dist/cli.js\"). Machine-scoped on purpose: this string gets executed, so a repository's .vscode/settings.json must never be able to set it. Paths containing spaces aren't supported — use a global install instead."
         },
         "mindsetCtx.dashboardUrl": {
           "type": "string",
           "default": "",
-          "description": "Hosted dashboard URL (e.g. https://mindset-ctx.mindset2026.workers.dev/v1/dashboard). Leave empty if you only use mindset-ctx self-hosted."
+          "scope": "machine",
+          "description": "Hosted dashboard URL (e.g. https://mindset-ctx.mindset2026.workers.dev/v1/dashboard). Leave empty if you only use mindset-ctx self-hosted. Machine-scoped so a repository can't redirect it to a phishing page."
         }
       }
     }

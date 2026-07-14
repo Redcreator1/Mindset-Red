@@ -16,7 +16,10 @@ import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs } from "./home.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "./workos.js";
-import { buildClearSessionCookieHeader, buildSessionCookieHeader, parseCookie, SESSION_COOKIE, SESSION_TTL_SEC } from "./session.js";
+import {
+  buildClearSessionCookieHeader, buildClearStateCookieHeader, buildSessionCookieHeader, buildStateCookieHeader,
+  newOauthState, parseCookie, OAUTH_STATE_COOKIE, SESSION_COOKIE, SESSION_TTL_SEC,
+} from "./session.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -464,13 +467,18 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         return;
       }
       const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      // OAuth state: a fresh nonce, echoed back by WorkOS and checked at the
+      // callback against this cookie — blocks login-CSRF (an attacker forcing
+      // a victim's browser through the callback with the attacker's code).
+      const state = newOauthState();
       const authUrl = buildWorkosAuthorizationUrl({
         clientId: opts.workosClientId,
         redirectUri: `${base.replace(/\/+$/, "")}/v1/sso/callback`,
         organizationId: url.searchParams.get("org") ?? undefined,
+        state,
         baseURL: opts.workosBaseURL,
       });
-      res.writeHead(302, { location: authUrl });
+      res.writeHead(302, { location: authUrl, "set-cookie": buildStateCookieHeader(state) });
       res.end();
       return;
     }
@@ -488,6 +496,18 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       const code = url.searchParams.get("code");
       if (!code) {
         sendJson(res, 400, { error: "missing code" });
+        return;
+      }
+      // The state echoed by WorkOS must match the nonce we set at login —
+      // otherwise this callback wasn't started by this browser. Reject it.
+      const returnedState = url.searchParams.get("state") ?? "";
+      const cookieState = parseCookie(req.headers.cookie, OAUTH_STATE_COOKIE) ?? "";
+      const stateOk =
+        returnedState.length > 0 &&
+        returnedState.length === cookieState.length &&
+        timingSafeEqual(Buffer.from(returnedState, "utf8"), Buffer.from(cookieState, "utf8"));
+      if (!stateOk) {
+        sendJson(res, 403, { error: "state mismatch — restart the login from /v1/sso/login" });
         return;
       }
       let identity;
@@ -524,7 +544,10 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
       res.writeHead(302, {
         location: `${opts.appBaseUrl ?? ""}/v1/dashboard`,
-        "set-cookie": buildSessionCookieHeader(mintSessionToken(tenant.key, opts.workosApiKey)),
+        "set-cookie": [
+          buildSessionCookieHeader(mintSessionToken(tenant.key, opts.workosApiKey)),
+          buildClearStateCookieHeader(), // one round-trip only — dead after use
+        ],
       });
       res.end();
       return;

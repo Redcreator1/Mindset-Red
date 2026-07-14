@@ -246,3 +246,33 @@ personne ; fournisseur de tout le monde.
   qui n'est pas un bump de version. Nécessite un secret GitHub `NPM_TOKEN`
   (token "Automation" généré sur npmjs.com) que l'utilisateur doit créer et
   renseigner — je ne peux pas créer de compte npm à sa place.
+- **15/07/2026** — Revue de sécurité complète demandée par l'utilisateur
+  après la série de livraisons du jour (« lance une analyse de sécurité »).
+  Vérifié sain : signatures Stripe/GitHub/GitLab (comparaison constante,
+  anti-rejeu Stripe), cookie de session signé/expirant/anti-falsification,
+  échappement HTML systématique (y compris noms de tenants issus d'emails
+  SSO), page succès Stripe qui exige le paiement confirmé, `admin` jamais
+  déduit, zéro secret réel dans le repo, paquet npm propre, secrets CI
+  masqués. **Trois vraies failles trouvées et corrigées dans la foulée
+  (v0.19.0)** : (1) le cookie de session était `SameSite=Lax` alors que
+  `/v1/team/invite`, `/v1/team/remove` et `/v1/checkout` mutent en GET —
+  un lien piégé cliqué par un owner connecté aurait exécuté l'action
+  (CSRF) ; passé en `Strict`, le seul flux cross-site nécessaire (retour
+  WorkOS → callback) utilisant désormais un cookie `state` séparé, Lax et
+  jetable. (2) Le flux OAuth WorkOS ne passait pas de `state` — login-CSRF
+  possible (forcer le navigateur d'une victime à finir le login avec le
+  code de l'attaquant, la victime travaillant ensuite dans le tenant de
+  l'attaquant sans le savoir) ; nonce généré au login, posé en cookie 10
+  min, vérifié au callback en temps constant, 403 sinon — testé Node +
+  Worker (state manquant, state falsifié, aucun tenant provisionné).
+  (3) Extension VS Code : `mindsetCtx.cliCommand` était exécuté via shell
+  (`exec`) et configurable par workspace — un repo malveillant pouvait
+  planter une commande arbitraire dans son `.vscode/settings.json`,
+  exécutée dès que la victime (ayant fait confiance au workspace) lançait
+  une commande mindset-ctx ; corrigé en `execFile` (aucun shell) +
+  `scope: "machine"` sur les deux réglages (un workspace ne peut plus les
+  écrire), et le défaut devient `npx mindset-ctx` maintenant que le paquet
+  est réellement sur npm — extension 0.1.2, à republier sur le
+  Marketplace. Aucune des trois n'était critique (impacts limités par les
+  clés secrètes et le Workspace Trust de VS Code), mais toutes étaient
+  réelles — corrigées le soir même plutôt que consignées dans un backlog.
