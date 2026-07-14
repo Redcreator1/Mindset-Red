@@ -283,6 +283,16 @@ test("Worker: SSO callback provisions an org+owner on first company login, a poo
     return realFetch(input, init);
   }) as typeof fetch;
 
+  // Full login round-trip: capture the OAuth state (cookie + URL param) so
+  // the callback's login-CSRF check passes, exactly as a real browser would.
+  const startLogin = async (): Promise<{ state: string; stateCookie: string }> => {
+    const res = await worker.fetch(new Request("https://ctx.example.com/v1/sso/login"), env);
+    assert.equal(res.status, 302);
+    const state = new URL(res.headers.get("location")!).searchParams.get("state")!;
+    assert.ok(state, "login minted an OAuth state");
+    return { state, stateCookie: res.headers.get("set-cookie")!.split(";")[0] };
+  };
+
   try {
     const store = new KvTenantStore(kv);
 
@@ -292,7 +302,11 @@ test("Worker: SSO callback provisions an org+owner on first company login, a poo
     assert.equal(new URL(login.headers.get("location")!).searchParams.get("redirect_uri"), "https://ctx.example.com/v1/sso/callback");
 
     // First employee of "acme" logs in — becomes the org's owner.
-    const first = await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=code-alice"), env);
+    const aliceLogin = await startLogin();
+    const first = await worker.fetch(
+      new Request(`https://ctx.example.com/v1/sso/callback?code=code-alice&state=${aliceLogin.state}`, { headers: { cookie: aliceLogin.stateCookie } }),
+      env,
+    );
     assert.equal(first.status, 302);
     assert.equal(first.headers.get("location"), "https://ctx.example.com/v1/dashboard");
     const aliceCookie = first.headers.get("set-cookie")!.split(";")[0];
@@ -301,11 +315,24 @@ test("Worker: SSO callback provisions an org+owner on first company login, a poo
     assert.equal((await store.getOrg(aliceTenant!.orgId!))?.ssoOrgId, "org_acme");
 
     // Second employee of the same company joins the SAME org as a member.
-    const second = await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=code-bob"), env);
+    const bobLogin = await startLogin();
+    const second = await worker.fetch(
+      new Request(`https://ctx.example.com/v1/sso/callback?code=code-bob&state=${bobLogin.state}`, { headers: { cookie: bobLogin.stateCookie } }),
+      env,
+    );
     const bobCookie = second.headers.get("set-cookie")!.split(";")[0];
     const bobTenant = await store.findBySsoUserId("user_bob");
     assert.equal(bobTenant?.role, "member");
     assert.equal(bobTenant?.orgId, aliceTenant!.orgId);
+
+    // Login-CSRF is blocked: mismatched or missing state → 403, no exchange.
+    const fresh = await startLogin();
+    const forged = await worker.fetch(
+      new Request(`https://ctx.example.com/v1/sso/callback?code=code-alice&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, { headers: { cookie: fresh.stateCookie } }),
+      env,
+    );
+    assert.equal(forged.status, 403);
+    assert.equal((await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=code-alice"), env)).status, 403);
 
     // The session cookie authenticates like a Bearer key would.
     const dash = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard/data", { headers: { cookie: aliceCookie } }), env);

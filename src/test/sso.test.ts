@@ -67,6 +67,17 @@ function cookieFrom(res: Response): string {
   return setCookie!.split(";")[0];
 }
 
+/** Start a real login round-trip: hit /v1/sso/login, capture the OAuth state (cookie + URL param). */
+async function startLogin(base: string): Promise<{ state: string; stateCookie: string }> {
+  const res = await fetch(`${base}/v1/sso/login`, { redirect: "manual" });
+  assert.equal(res.status, 302);
+  const state = new URL(res.headers.get("location")!).searchParams.get("state")!;
+  assert.ok(state, "login minted an OAuth state");
+  const stateCookie = res.headers.get("set-cookie")!.split(";")[0];
+  assert.match(stateCookie, /^ctx_oauth_state=/);
+  return { state, stateCookie };
+}
+
 test("buildWorkosAuthorizationUrl points at AuthKit with the right client/redirect/org params", () => {
   const url = new URL(buildWorkosAuthorizationUrl({
     clientId: "client_123", redirectUri: "https://ctx.example.com/v1/sso/callback", organizationId: "org_abc",
@@ -120,8 +131,12 @@ test("SSO callback provisions an org+owner on first company login, a pooled memb
 
   try {
     // 1. First employee of "acme" logs in via SSO — becomes the org's owner.
+    // Full round-trip: login mints the OAuth state, the callback checks it.
     workos.registerCode("code-alice", { id: "user_alice", email: "alice@acme.com", organization_id: "org_acme" });
-    const first = await fetch(`${base}/v1/sso/callback?code=code-alice`, { redirect: "manual" });
+    const aliceLogin = await startLogin(base);
+    const first = await fetch(`${base}/v1/sso/callback?code=code-alice&state=${aliceLogin.state}`, {
+      redirect: "manual", headers: { cookie: aliceLogin.stateCookie },
+    });
     assert.equal(first.status, 302);
     assert.equal(first.headers.get("location"), "http://ctx.local/v1/dashboard");
     const aliceCookie = cookieFrom(first);
@@ -136,7 +151,10 @@ test("SSO callback provisions an org+owner on first company login, a pooled memb
     // 2. A second employee of the same company logs in — joins the SAME org
     // as a member, not a fresh one, and shares its pooled quota.
     workos.registerCode("code-bob", { id: "user_bob", email: "bob@acme.com", organization_id: "org_acme" });
-    const second = await fetch(`${base}/v1/sso/callback?code=code-bob`, { redirect: "manual" });
+    const bobLogin = await startLogin(base);
+    const second = await fetch(`${base}/v1/sso/callback?code=code-bob&state=${bobLogin.state}`, {
+      redirect: "manual", headers: { cookie: bobLogin.stateCookie },
+    });
     assert.equal(second.status, 302);
     const bobCookie = cookieFrom(second);
     const bobTenant = store.findBySsoUserId("user_bob");
@@ -145,8 +163,24 @@ test("SSO callback provisions an org+owner on first company login, a pooled memb
 
     // 3. Re-logging in as alice does NOT mint a second tenant.
     workos.registerCode("code-alice-again", { id: "user_alice", email: "alice@acme.com", organization_id: "org_acme" });
-    await fetch(`${base}/v1/sso/callback?code=code-alice-again`, { redirect: "manual" });
+    const aliceAgain = await startLogin(base);
+    await fetch(`${base}/v1/sso/callback?code=code-alice-again&state=${aliceAgain.state}`, {
+      redirect: "manual", headers: { cookie: aliceAgain.stateCookie },
+    });
     assert.equal(store.membersOf(aliceTenant!.orgId!).length, 2, "still just alice + bob, no duplicate tenant");
+
+    // 3bis. Login-CSRF is blocked: a callback whose state doesn't match the
+    // browser's cookie (or arrives with no state at all) is rejected before
+    // any code exchange happens.
+    workos.registerCode("code-mallory", { id: "user_mallory", email: "mallory@evil.com" });
+    const fresh = await startLogin(base);
+    const forged = await fetch(`${base}/v1/sso/callback?code=code-mallory&state=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`, {
+      redirect: "manual", headers: { cookie: fresh.stateCookie },
+    });
+    assert.equal(forged.status, 403, "mismatched state is rejected");
+    const noState = await fetch(`${base}/v1/sso/callback?code=code-mallory`, { redirect: "manual" });
+    assert.equal(noState.status, 403, "missing state is rejected");
+    assert.equal(store.findBySsoUserId("user_mallory"), null, "no tenant was provisioned from the forged callback");
 
     // 4. The session cookie authenticates the dashboard exactly like a Bearer key would.
     const dash = await fetch(`${base}/v1/dashboard/data`, { headers: { cookie: aliceCookie } });
@@ -182,7 +216,10 @@ test("SSO login without a WorkOS organization (personal AuthKit account) provisi
   const base = await listen(server);
   try {
     workos.registerCode("code-solo", { id: "user_solo", email: "solo@example.com" });
-    const res = await fetch(`${base}/v1/sso/callback?code=code-solo`, { redirect: "manual" });
+    const login = await startLogin(base);
+    const res = await fetch(`${base}/v1/sso/callback?code=code-solo&state=${login.state}`, {
+      redirect: "manual", headers: { cookie: login.stateCookie },
+    });
     assert.equal(res.status, 302);
     const tenant = store.findBySsoUserId("user_solo");
     assert.ok(tenant);
@@ -203,7 +240,12 @@ test("/v1/sso/callback: missing code is 400, WorkOS error is 502", async () => {
   const base = await listen(server);
   try {
     assert.equal((await fetch(`${base}/v1/sso/callback`)).status, 400);
-    assert.equal((await fetch(`${base}/v1/sso/callback?code=never-registered`)).status, 502);
+    // A valid state round-trip but a code WorkOS rejects → 502 from the exchange.
+    const login = await startLogin(base);
+    const res = await fetch(`${base}/v1/sso/callback?code=never-registered&state=${login.state}`, {
+      headers: { cookie: login.stateCookie },
+    });
+    assert.equal(res.status, 502);
   } finally {
     server.close();
     workos.server.close();

@@ -1,12 +1,12 @@
 import * as vscode from "vscode";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { buildClaudeMcpCommand } from "./mcpSnippet";
 import { statusFor } from "./statusText";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 let outputChannel: vscode.OutputChannel;
 let statusBarItem: vscode.StatusBarItem;
@@ -16,9 +16,10 @@ function workspaceRoot(): string | undefined {
 }
 
 /**
- * mindset-ctx isn't published to npm yet (self-hosted / cloned-from-GitHub
- * only), so there's no npx default to fall back to — ask once, then
- * remember the answer in workspace settings.
+ * Defaults to `npx mindset-ctx` (the package is on npm); if the user cleared
+ * the setting, ask once and save it. Machine-scoped setting → Global target:
+ * the command gets executed, so a repository's .vscode/settings.json must
+ * never be able to plant it.
  */
 async function resolveCliCommand(): Promise<string | undefined> {
   const config = vscode.workspace.getConfiguration("mindsetCtx");
@@ -27,11 +28,11 @@ async function resolveCliCommand(): Promise<string | undefined> {
 
   const entered = await vscode.window.showInputBox({
     title: "mindset-ctx CLI command",
-    prompt: 'How do you run the mindset-ctx CLI? (e.g. "ctx" if installed globally, or "node /path/to/mindset-ctx/dist/cli.js")',
-    placeHolder: "node /path/to/mindset-ctx/dist/cli.js",
+    prompt: 'How do you run the mindset-ctx CLI? (e.g. "npx mindset-ctx", "ctx" if installed globally, or "node /path/to/mindset-ctx/dist/cli.js")',
+    placeHolder: "npx mindset-ctx",
   });
   if (!entered) return undefined;
-  await config.update("cliCommand", entered, vscode.ConfigurationTarget.Workspace);
+  await config.update("cliCommand", entered, vscode.ConfigurationTarget.Global);
   return entered;
 }
 
@@ -44,10 +45,14 @@ async function runCliCommand(subcommand: string, label: string): Promise<void> {
   const cli = await resolveCliCommand();
   if (!cli) return;
 
+  // execFile (not exec): no shell ever sees these strings, so a workspace
+  // path — or a cliCommand — containing quotes/$()/backticks can't inject.
+  const [command, ...cliArgs] = cli.split(" ").filter(Boolean);
+  const args = [...cliArgs, subcommand, root];
   outputChannel.show(true);
-  outputChannel.appendLine(`$ ${cli} ${subcommand} "${root}"`);
+  outputChannel.appendLine(`$ ${command} ${args.join(" ")}`);
   try {
-    const { stdout, stderr } = await execAsync(`${cli} ${subcommand} "${root}"`, { cwd: root });
+    const { stdout, stderr } = await execFileAsync(command, args, { cwd: root });
     if (stdout) outputChannel.appendLine(stdout);
     if (stderr) outputChannel.appendLine(stderr);
     vscode.window.showInformationMessage(`mindset-ctx: ${label} done.`);
