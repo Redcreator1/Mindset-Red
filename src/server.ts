@@ -31,9 +31,10 @@ import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
  *                                                 default) | semantic (Voyage embeddings)
  *                                                 | hybrid (RRF fusion of both). semantic
  *                                                 and hybrid need `ctx index --embed`.
- *   POST /v1/repos/:repo/webhook                — GitHub webhook (push/issues/PR):
- *                                                 verifies X-Hub-Signature-256 and
- *                                                 refreshes memory + context files
+ *   POST /v1/repos/:repo/webhook                — GitHub or GitLab webhook (push/issues/PR):
+ *                                                 verifies X-Hub-Signature-256 (GitHub) or
+ *                                                 X-Gitlab-Token (GitLab); refreshes memory
+ *                                                 + context files
  *   GET  /v1/app/manifest                       — GitHub App manifest (one-click create)
  *   POST /v1/app/webhook                         — GitHub App events (installation…):
  *                                                 HMAC-verified; classified for the log
@@ -116,6 +117,23 @@ function validSignature(secret: string, body: Buffer, header: string | undefined
   if (given.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(given, "utf8"), Buffer.from(expected, "utf8"));
 }
+
+/**
+ * GitLab webhooks authenticate with a static shared token in X-Gitlab-Token
+ * (compared directly, unlike GitHub's HMAC-signed body) — constant-time to
+ * avoid timing side-channels.
+ */
+function validGitLabToken(secret: string, header: string | undefined): boolean {
+  if (!header || header.length !== secret.length) return false;
+  return timingSafeEqual(Buffer.from(header, "utf8"), Buffer.from(secret, "utf8"));
+}
+
+/** GitLab's human-readable X-Gitlab-Event names → our normalized event strings. */
+const GITLAB_EVENT_MAP: Record<string, string> = {
+  "Push Hook": "push",
+  "Issue Hook": "issues",
+  "Merge Request Hook": "pull_request",
+};
 
 /** Refresh a repo after a webhook event: re-index memory, regenerate context. */
 function refreshRepo(root: string, event: string): { memoryRecords: number; regenerated: string[] } {
@@ -425,11 +443,25 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         return;
       }
       const body = await readBody(req);
-      if (!validSignature(opts.webhookSecret, body, req.headers["x-hub-signature-256"] as string | undefined)) {
-        sendJson(res, 401, { error: "invalid webhook signature" });
-        return;
+      // Provider is inferred from which header it actually sent — GitHub
+      // signs the body (X-Hub-Signature-256), GitLab sends a plain shared
+      // token (X-Gitlab-Token). Same repo, either provider, one endpoint.
+      const gitlabToken = req.headers["x-gitlab-token"] as string | undefined;
+      let event: string;
+      if (gitlabToken !== undefined) {
+        if (!validGitLabToken(opts.webhookSecret, gitlabToken)) {
+          sendJson(res, 401, { error: "invalid webhook token" });
+          return;
+        }
+        const gitlabEvent = String(req.headers["x-gitlab-event"] ?? "unknown");
+        event = GITLAB_EVENT_MAP[gitlabEvent] ?? gitlabEvent;
+      } else {
+        if (!validSignature(opts.webhookSecret, body, req.headers["x-hub-signature-256"] as string | undefined)) {
+          sendJson(res, 401, { error: "invalid webhook signature" });
+          return;
+        }
+        event = String(req.headers["x-github-event"] ?? "unknown");
       }
-      const event = String(req.headers["x-github-event"] ?? "unknown");
       if (!WEBHOOK_EVENTS.has(event)) {
         sendJson(res, 200, { ok: true, event, action: "ignored" });
         return;
