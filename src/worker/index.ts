@@ -1,4 +1,5 @@
 import { renderPricing, renderSuccess } from "../pricing.js";
+import { renderHome, renderDocs } from "../home.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
@@ -73,7 +74,17 @@ export default {
     const baseUrl = env.CTX_BASE_URL || `${url.protocol}//${url.host}`;
 
     // ---------- Public routes ----------
-    if (path === "/" || path === "/pricing") {
+    // Root domain is the vitrine (thesis, not price list) — the moment a real
+    // domain points here, this is what a first-time visitor sees.
+    if (path === "/") {
+      return html(200, renderHome());
+    }
+
+    if (path === "/docs") {
+      return html(200, renderDocs());
+    }
+
+    if (path === "/pricing") {
       const availablePlans = new Set<PlanId>(Object.values(priceMap));
       return html(200, renderPricing({ baseUrl, availablePlans }));
     }

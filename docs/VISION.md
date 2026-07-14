@@ -86,3 +86,22 @@ personne ; fournisseur de tout le monde.
   promettait sans l'avoir construit). SSO, extension IDE, intégrations tierces et
   referral restent à planifier — chacun mérite sa propre session dédiée plutôt
   qu'être bâclé ce soir.
+- **14/07/2026** — Vitrine du domaine racine construite (`src/home.ts` : `/` et
+  `/docs`), pour que brancher `mindset-ctx.dev` une fois acheté soit une pure
+  opération DNS (voir `docs/DOMAIN-SETUP.md` pour le runbook exact — attention,
+  le domaine doit être géré par Cloudflare pour qu'un Custom Domain fonctionne,
+  à vérifier avant l'achat si acheté hors Cloudflare Registrar). Correction au
+  passage d'un vrai bug : sur le serveur Node, `/` renvoyait toujours le JSON de
+  `/v1/health` (les deux branches testaient `path === "/"`, celle du health
+  check passait en premier) — la page pricing sur `/` n'était jamais atteinte.
+- **14/07/2026** — Demande explicite de construire SSO/RBAC sans attendre un
+  client Enterprise. Après investigation du modèle de données actuel : le
+  concept de "rôle" (propriétaire/membre) n'a nulle part où s'accrocher tant
+  qu'une clé API = un tenant = un compte isolé, ce qui est le modèle actuel.
+  Ajouter un champ `role` cosmétique sans vraie structure d'équipe derrière
+  aurait été une fonctionnalité coquille vide — exactement le genre de travail
+  à moitié fini à éviter. Le vrai prérequis technique : un concept
+  **d'organisation** avec plusieurs clés membres et une facturation partagée
+  (multi-seat), *puis* des rôles dessus ont un sens (ex. : qui peut déclencher
+  `/v1/checkout` pour changer le plan de toute l'équipe). C'est un chantier
+  à part entière — prochaine session dédiée, pas une ligne ajoutée ce soir.

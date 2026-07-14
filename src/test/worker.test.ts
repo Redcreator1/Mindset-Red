@@ -38,6 +38,26 @@ test("Worker: /pricing renders the public HTML page", async () => {
   assert.match(body, /Passer Pro/);
 });
 
+test("Worker: / renders the vitrine, not the pricing page or a health JSON", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/"), env);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/html; charset=utf-8");
+  const body = await res.text();
+  assert.ok(body.startsWith("<!doctype html>"));
+  assert.ok(!body.includes("Passer Pro"), "vitrine is not the price list");
+  assert.match(body, /agent IA/);
+});
+
+test("Worker: /docs renders the documentation index", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/docs"), env);
+  assert.equal(res.status, 200);
+  const body = await res.text();
+  assert.match(body, /Documentation/);
+  assert.match(body, /github\.com\/Redcreator1\/Mindset-Red/);
+});
+
 test("Worker: unauthenticated dashboard call → 401", async () => {
   const env = { CTX_KV: new MemKV() };
   const res = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard"), env);

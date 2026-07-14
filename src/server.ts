@@ -14,6 +14,7 @@ import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData 
 import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
+import { renderHome, renderDocs } from "./home.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -219,13 +220,27 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     const url = new URL(req.url ?? "/", "http://localhost");
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
-    if (path === "/v1/health" || path === "/") {
+    if (path === "/v1/health") {
       sendJson(res, 200, { ok: true, service: "mindset-ctx", repos: names });
       return;
     }
 
-    // Public marketing pages — no auth required.
-    if (path === "/pricing" || path === "/") {
+    // Public marketing pages — no auth required. Root domain is the vitrine
+    // (thesis, not price list); "/" previously aliased to the health check
+    // above and this branch was dead code — fixed while adding /docs.
+    if (path === "/") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderHome());
+      return;
+    }
+
+    if (path === "/docs") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderDocs());
+      return;
+    }
+
+    if (path === "/pricing") {
       const availablePlans = new Set<PlanId>(Object.values(priceMap));
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(renderPricing({ baseUrl: opts.appBaseUrl ?? "", availablePlans }));
