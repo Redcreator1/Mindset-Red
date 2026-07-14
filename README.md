@@ -272,6 +272,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.12 — **doc Cursor** : `ctx mcp` fonctionnait déjà avec Cursor (MCP natif) mais n'était pas documenté — `.cursor/mcp.json` ajouté au README
 - [x] v0.13 — **vitrine du domaine racine** (`/`, `src/home.ts`) séparée de `/pricing`, **doc index** (`/docs`) qui pointe vers le README/docs plutôt que de le dupliquer ; runbook de branchement du domaine (`docs/DOMAIN-SETUP.md`) — au moment de l'achat de `mindset-ctx.dev`, ce n'est plus qu'une opération DNS
 - [x] v0.14 — **Teams multi-sièges** : signup Team crée une organisation (facturation + quota partagés, pas par siège) avec le premier compte en `role: "owner"` ; `/v1/team/invite` et `/v1/team/remove` gèrent le roster ; `/v1/checkout` refusé aux non-owners ; dashboard scopé (owner → son équipe, admin → toute la plateforme). C'est le prérequis RBAC identifié en v0.13 — désormais construit, sur Node **et** Cloudflare Workers.
+- [x] v0.15 — **parité GitHub App sur le Worker Cloudflare réellement déployé** : `/v1/app/manifest`, `/v1/app/webhook` (HMAC vérifiée via Web Crypto) et `/v1/app/installed` n'existaient que sur `server.ts` (self-hosted) depuis la v0.10, malgré ce que le changelog laissait entendre — le Worker en prod n'avait jamais le provisioning auto par install. Corrigé : les trois routes tournent maintenant sur KV (`store.findByInstallationId`), `CTX_WEBHOOK_SECRET` poussé par `.github/workflows/deploy-cloudflare.yml`.
 - [ ] SSO (Team/Enterprise, probablement via WorkOS plutôt que du SAML fait maison) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
@@ -297,8 +298,16 @@ node dist/cli.js stripe webhook https://<ton-worker>.workers.dev/v1/stripe/webho
 npx wrangler secret put CTX_STRIPE_SECRET
 npx wrangler deploy
 
-# 4. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
-#    API est activée automatiquement par le webhook. Zéro humain dans la boucle.
+# 4. (optionnel) GitHub App — provisioning automatique par install, même sur
+#    le Worker déployé (pas seulement en self-hosted) :
+npx wrangler secret put CTX_WEBHOOK_SECRET   # même secret que celui déclaré dans l'App GitHub
+npx wrangler deploy
+#    Crée l'App depuis le manifest : POST https://<ton-worker>.workers.dev/v1/app/manifest
+#    vers https://github.com/settings/apps/new
+
+# 5. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
+#    API est activée automatiquement par le webhook (Stripe ou GitHub App).
+#    Zéro humain dans la boucle.
 ```
 
 **Via GitHub Actions (recommandé, zéro terminal)** : configure les secrets

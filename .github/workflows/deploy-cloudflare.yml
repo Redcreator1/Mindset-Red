@@ -31,6 +31,7 @@ jobs:
           put() { echo "$2" | npx --yes wrangler@3 secret put "$1"; }
           put CTX_STRIPE_API_KEY "${{ secrets.CTX_STRIPE_API_KEY }}"
           put CTX_STRIPE_SECRET  "${{ secrets.CTX_STRIPE_SECRET }}"
+          put CTX_WEBHOOK_SECRET "${{ secrets.CTX_WEBHOOK_SECRET }}"
           put STRIPE_PRICE_MAP   '${{ secrets.STRIPE_PRICE_MAP }}'
 
       - name: Deploy
@@ -52,6 +53,7 @@ jobs:
               echo "   Dashboard: ${URL}/v1/dashboard"
               echo "   Webhook:   ${URL}/v1/stripe/webhook  (add this in Stripe Dashboard, or run the"
               echo "              'Stripe — bootstrap webhook' workflow to create it automatically)"
+              echo "   GH App:    ${URL}/v1/app/manifest  (POST to https://github.com/settings/apps/new to create)"
               exit 0
             fi
             sleep 3
