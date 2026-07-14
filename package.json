@@ -1,6 +1,6 @@
 {
   "name": "mindset-ctx",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub or GitLab repo, with a memory layer over its history.",
   "type": "module",
   "license": "MIT",
@@ -11,8 +11,16 @@
     "ctx": "dist/cli.js"
   },
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "!dist/test",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build && npm run test",
     "test": "npm run build && node --test dist/test/*.test.js",
     "dev": "tsc --watch",
     "ctx": "npm run build && node dist/cli.js"
