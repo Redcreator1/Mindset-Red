@@ -105,3 +105,34 @@ personne ; fournisseur de tout le monde.
   (multi-seat), *puis* des rôles dessus ont un sens (ex. : qui peut déclencher
   `/v1/checkout` pour changer le plan de toute l'équipe). C'est un chantier
   à part entière — prochaine session dédiée, pas une ligne ajoutée ce soir.
+- **14/07/2026** — Le chantier Teams multi-sièges attaqué dans la foulée.
+  Ajouté : `Organization` (id, plan, quota, repos partagés) dans
+  `tenant-core.ts` ; `Tenant` gagne `orgId`/`role` (`owner`/`member`) ;
+  `TenantStore`/`KvTenantStore` gèrent les organisations en plus des tenants
+  (persistées ensemble) ; `UsageMeter`/`KvUsageMeter` poolent le quota au
+  niveau de l'organisation quand `orgId` est posé — un siège de plus ne
+  multiplie pas le quota, il le partage. Le signup self-service pour le plan
+  **Team** crée automatiquement une organisation et met le premier compte en
+  `role: "owner"` (Pro reste un tenant solo classique). `/v1/team/invite` et
+  `/v1/team/remove` (owner uniquement) gèrent le roster ; `/v1/checkout` est
+  refusé à un `member`. Câblé en parité complète sur `server.ts` (Node) **et**
+  `worker/index.ts` (le Worker Cloudflare réellement déployé) — pas juste côté
+  self-hosted. Refactor au passage : `WorkerTenant` (kv.ts) dupliquait `Tenant`
+  de `tenant-core.ts` presque à l'identique ; fusionné vers le type partagé
+  pour ne pas tripler la définition avec `Organization`.
+  **Bug réel trouvé en écrivant les tests** : `tenantsEnabled` (server.ts)
+  était calculé une seule fois à la construction du serveur
+  (`store.all().length > 0`), donc un store démarrant vide (le cas normal
+  pour le signup self-service ou une organisation qui grandit par invite)
+  ne reconnaissait plus jamais aucun tenant créé après coup sur les routes
+  authentifiées (`/v1/usage`, `/v1/checkout`, et maintenant `/v1/team/*`) —
+  elles auraient toutes répondu 401/404 en boucle. N'affectait pas le Worker
+  Cloudflare en production (lookup KV frais à chaque requête, pas de valeur
+  figée), mais aurait cassé le mode self-hosted/Enterprise Docker dès qu'un
+  client s'inscrivait après le démarrage. Corrigé : la condition reflète
+  maintenant "le mode tenants a-t-il été activé" (présence de l'option), pas
+  "le store contient-il des tenants là maintenant".
+  9 nouveaux tests (Node + Worker) couvrent le cycle complet : création
+  d'organisation au signup, webhook qui bascule le plan de l'org (pas du
+  tenant), pooling du quota entre sièges, refus 403 pour un membre non-owner,
+  et suppression d'un coéquipier (avec garde contre l'auto-suppression).

@@ -1,9 +1,10 @@
 import { planFor, type Plan, type PlanId } from "./billing.js";
 
 /**
- * Pure tenant helpers — no node:fs, safe to import from the Cloudflare Worker
- * runtime (which cannot resolve node:fs even with nodejs_compat).
- * The stateful pieces (TenantStore, UsageMeter, loadTenants) stay in tenants.ts.
+ * Pure tenant + organization helpers — no node:fs, safe to import from the
+ * Cloudflare Worker runtime (which cannot resolve node:fs even with
+ * nodejs_compat). The stateful pieces (TenantStore, UsageMeter, loadTenants)
+ * stay in tenants.ts.
  */
 
 export interface Tenant {
@@ -11,9 +12,9 @@ export interface Tenant {
   name: string;
   /** Repo names this key may access, or "*" for all. */
   repos: string[] | "*";
-  /** Subscription plan id; defaults to "free". */
+  /** Subscription plan id; defaults to "free". Ignored when orgId is set — the org's plan governs. */
   plan?: PlanId;
-  /** Explicit override of the plan's daily quota (optional). */
+  /** Explicit override of the plan's daily quota (optional). Ignored when orgId is set. */
   dailyLimit?: number;
   /** GitHub App installation id, set when this tenant was created by an App install. */
   installationId?: number;
@@ -24,6 +25,23 @@ export interface Tenant {
    * customer tenants.
    */
   admin?: boolean;
+  /** Organization this tenant belongs to, if it's a team seat rather than a solo account. */
+  orgId?: string;
+  /** Role within orgId. Meaningless without orgId. Only "owner" can manage billing/invites. */
+  role?: "owner" | "member";
+}
+
+/**
+ * A multi-seat team: billing and quota live here, not on individual member
+ * tenants, so every member of the org shares one plan and one daily pool.
+ */
+export interface Organization {
+  id: string;
+  name: string;
+  plan?: PlanId;
+  dailyLimit?: number;
+  /** Repo names members may access, or "*" for all. */
+  repos: string[] | "*";
 }
 
 /** Resolve the effective daily quota for a tenant (override > plan). */
@@ -38,4 +56,23 @@ export function tenantPlan(tenant: Tenant): Plan {
 
 export function tenantMayAccess(tenant: Tenant, repo: string): boolean {
   return tenant.repos === "*" || tenant.repos.includes(repo);
+}
+
+/** Resolve the effective daily quota for an organization (override > plan). */
+export function orgDailyLimit(org: Organization): number | null {
+  if (org.dailyLimit !== undefined) return org.dailyLimit;
+  return planFor(org.plan).dailyLimit;
+}
+
+export function orgPlan(org: Organization): Plan {
+  return planFor(org.plan);
+}
+
+/**
+ * Whether this tenant may change billing (upgrade/downgrade the plan they're
+ * on). Solo tenants always can — they're the only seat. Org members need the
+ * owner role, since a plan change affects every teammate's shared quota.
+ */
+export function tenantCanManageBilling(tenant: Tenant): boolean {
+  return !tenant.orgId || tenant.role === "owner";
 }

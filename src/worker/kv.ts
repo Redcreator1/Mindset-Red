@@ -1,25 +1,17 @@
-import { planFor, PLANS, type PlanId } from "../billing.js";
+import { PLANS, type PlanId } from "../billing.js";
+import { orgDailyLimit, tenantDailyLimit, type Organization, type Tenant } from "../tenant-core.js";
+export { orgDailyLimit, orgPlan, tenantCanManageBilling, tenantDailyLimit, tenantMayAccess, tenantPlan, type Organization, type Tenant } from "../tenant-core.js";
 
 /**
- * KV-backed tenant + usage stores for the Cloudflare Workers runtime.
+ * KV-backed tenant + organization + usage stores for the Cloudflare Workers
+ * runtime. Shares the Tenant/Organization shape from tenant-core.ts (rather
+ * than a parallel WorkerTenant type) so this and the Node store (tenants.ts)
+ * can never silently drift apart.
  * Keys:
  *   tenant:<key>            → JSON of the Tenant
- *   usage:<key>:<YYYY-MM-DD> → integer request count (48h TTL)
+ *   org:<id>                → JSON of the Organization
+ *   usage:<key-or-org>:<YYYY-MM-DD> → integer request count (48h TTL)
  */
-
-export interface WorkerTenant {
-  key: string;
-  name: string;
-  repos: string[] | "*";
-  plan?: PlanId;
-  dailyLimit?: number;
-  /**
-   * Dashboard operator: sees every tenant instead of just itself. Must be
-   * set explicitly (edit the tenant JSON in KV) — never inferred from repo
-   * scope, since every self-service signup tenant is "*"-scoped.
-   */
-  admin?: boolean;
-}
 
 // Minimal duck type for the KV binding — matches Cloudflare's KVNamespace.
 export interface KVLike {
@@ -31,21 +23,16 @@ export interface KVLike {
 
 const USAGE_TTL = 60 * 60 * 48; // 48h — covers timezone edge cases
 
-export function tenantDailyLimit(t: WorkerTenant): number | null {
-  if (t.dailyLimit !== undefined) return t.dailyLimit;
-  return planFor(t.plan).dailyLimit;
-}
-
 export class KvTenantStore {
   constructor(private readonly kv: KVLike) {}
 
-  async get(key: string | undefined): Promise<WorkerTenant | null> {
+  async get(key: string | undefined): Promise<Tenant | null> {
     if (!key) return null;
     const raw = await this.kv.get(`tenant:${key}`);
-    return raw ? (JSON.parse(raw) as WorkerTenant) : null;
+    return raw ? (JSON.parse(raw) as Tenant) : null;
   }
 
-  async upsert(tenant: WorkerTenant): Promise<void> {
+  async upsert(tenant: Tenant): Promise<void> {
     await this.kv.put(`tenant:${tenant.key}`, JSON.stringify(tenant));
   }
 
@@ -59,13 +46,51 @@ export class KvTenantStore {
   }
 
   /** Lists tenants — used by the dashboard admin view. */
-  async list(): Promise<WorkerTenant[]> {
+  async list(): Promise<Tenant[]> {
     const { keys } = await this.kv.list({ prefix: "tenant:" });
     const results = await Promise.all(keys.map((k) => this.kv.get(k.name)));
-    return results.filter((r): r is string => r !== null).map((r) => JSON.parse(r) as WorkerTenant);
+    return results.filter((r): r is string => r !== null).map((r) => JSON.parse(r) as Tenant);
+  }
+
+  /** Remove a tenant (e.g. an owner removing a teammate). Returns whether it existed. */
+  async remove(key: string): Promise<boolean> {
+    const existing = await this.kv.get(`tenant:${key}`);
+    if (existing === null) return false;
+    await this.kv.delete(`tenant:${key}`);
+    return true;
+  }
+
+  async getOrg(id: string | undefined): Promise<Organization | null> {
+    if (!id) return null;
+    const raw = await this.kv.get(`org:${id}`);
+    return raw ? (JSON.parse(raw) as Organization) : null;
+  }
+
+  async upsertOrg(org: Organization): Promise<void> {
+    await this.kv.put(`org:${org.id}`, JSON.stringify(org));
+  }
+
+  async setOrgPlan(id: string, plan: PlanId): Promise<boolean> {
+    const org = await this.getOrg(id);
+    if (!org) return false;
+    org.plan = plan;
+    delete org.dailyLimit;
+    await this.upsertOrg(org);
+    return true;
+  }
+
+  /** Every tenant belonging to an organization — the owner's team roster. */
+  async membersOf(orgId: string): Promise<Tenant[]> {
+    const all = await this.list();
+    return all.filter((t) => t.orgId === orgId);
   }
 }
 
+/**
+ * KV-backed daily usage metering. When `org` is passed, every teammate
+ * meters against the same pooled counter (keyed by org id) and the org's
+ * plan/quota governs — a team shares one quota, it isn't multiplied per seat.
+ */
 export class KvUsageMeter {
   constructor(private readonly kv: KVLike) {}
 
@@ -74,26 +99,28 @@ export class KvUsageMeter {
   }
 
   /** Count one request; returns false if over quota. */
-  async consume(tenant: WorkerTenant): Promise<boolean> {
-    const limit = tenantDailyLimit(tenant);
-    const key = `usage:${tenant.key}:${this.today()}`;
+  async consume(tenant: Tenant, org?: Organization | null): Promise<boolean> {
+    const limit = org ? orgDailyLimit(org) : tenantDailyLimit(tenant);
+    const meterKey = org ? `org:${org.id}` : tenant.key;
+    const key = `usage:${meterKey}:${this.today()}`;
     const current = Number((await this.kv.get(key)) ?? 0);
     if (limit !== null && current >= limit) return false;
     await this.kv.put(key, String(current + 1), { expirationTtl: USAGE_TTL });
     return true;
   }
 
-  async report(tenant: WorkerTenant): Promise<{
+  async report(tenant: Tenant, org?: Organization | null): Promise<{
     name: string; plan: PlanId; date: string; requests: number; dailyLimit: number | null;
   }> {
+    const meterKey = org ? `org:${org.id}` : tenant.key;
     const date = this.today();
-    const raw = await this.kv.get(`usage:${tenant.key}:${date}`);
+    const raw = await this.kv.get(`usage:${meterKey}:${date}`);
     return {
       name: tenant.name,
-      plan: tenant.plan ?? "free",
+      plan: (org ? org.plan : tenant.plan) ?? "free",
       date,
       requests: Number(raw ?? 0),
-      dailyLimit: tenantDailyLimit(tenant),
+      dailyLimit: org ? orgDailyLimit(org) : tenantDailyLimit(tenant),
     };
   }
 }
@@ -102,6 +129,13 @@ export function newTenantKey(): string {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return "sk-" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Mint a fresh, unguessable organization id (for Team-plan multi-seat signup). */
+export function newOrgId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return "org-" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Validate that a plan id is a known one. */

@@ -7,6 +7,7 @@ import { verifyStripeSignatureWeb } from "./hmac.js";
 import {
   KvTenantStore,
   KvUsageMeter,
+  newOrgId,
   newTenantKey,
   isValidPlan,
   type KVLike,
@@ -105,7 +106,16 @@ export default {
       if (!priceId) return json(400, { error: `no Stripe price mapped for plan '${plan}'` });
 
       const key = newTenantKey();
-      await store.upsert({ key, name: `signup-${key.slice(-8)}`, repos: "*", plan: "free" });
+      // Team is multi-seat by definition — the signing-up tenant becomes the
+      // org's owner (able to invite teammates and manage billing) rather than
+      // a standalone tenant with its own plan. Pro stays a plain solo tenant.
+      if (plan === "team") {
+        const orgId = newOrgId();
+        await store.upsertOrg({ id: orgId, name: `team-${orgId.slice(-8)}`, repos: "*", plan: "free" });
+        await store.upsert({ key, name: `signup-${key.slice(-8)}`, repos: "*", orgId, role: "owner" });
+      } else {
+        await store.upsert({ key, name: `signup-${key.slice(-8)}`, repos: "*", plan: "free" });
+      }
       try {
         const session = await createCheckoutSession({
           secretKey: env.CTX_STRIPE_API_KEY,
@@ -160,7 +170,12 @@ export default {
       }
       const outcome = resolveSubscriptionEvent(event, priceMap);
       if (outcome.action === "set-plan" || outcome.action === "downgrade") {
-        const applied = await store.setPlan(outcome.tenantKey, outcome.plan);
+        // A team's billing lives on the organization, not the individual
+        // tenant who happened to check out — every teammate shares it.
+        const billedTenant = await store.get(outcome.tenantKey);
+        const applied = billedTenant?.orgId
+          ? await store.setOrgPlan(billedTenant.orgId, outcome.plan)
+          : await store.setPlan(outcome.tenantKey, outcome.plan);
         return json(200, { ok: true, ...outcome, applied });
       }
       return json(200, { ok: true, ...outcome });
@@ -171,21 +186,56 @@ export default {
 
     const tenant = await store.get(requestKey(req));
     if (!tenant) return json(401, { error: "unauthorized — pass Authorization: Bearer <key>" });
-    if (!(await meter.consume(tenant))) {
-      return json(429, { error: "daily quota exceeded", ...(await meter.report(tenant)) });
+    // A team seat's quota is pooled on the organization, not the individual
+    // tenant — every teammate draws from the same daily counter.
+    const org = tenant.orgId ? await store.getOrg(tenant.orgId) : null;
+    if (!(await meter.consume(tenant, org))) {
+      return json(429, { error: "daily quota exceeded", ...(await meter.report(tenant, org)) });
     }
 
     if (path === "/v1/usage") {
-      return json(200, await meter.report(tenant));
+      return json(200, await meter.report(tenant, org));
+    }
+
+    // Team: the org owner invites a teammate — mints a key sharing the same
+    // org (and so the same pooled quota + plan), shown exactly once.
+    if (path === "/v1/team/invite") {
+      if (!tenant.orgId || tenant.role !== "owner") {
+        return json(403, { error: "only a team owner can invite teammates" });
+      }
+      const name = url.searchParams.get("name");
+      if (!name) return json(400, { error: "usage: /v1/team/invite?name=<teammate>" });
+      const memberKey = newTenantKey();
+      await store.upsert({ key: memberKey, name, repos: org!.repos, orgId: org!.id, role: "member" });
+      return json(200, { ok: true, key: memberKey, name, org: org!.name });
+    }
+
+    // Team: the org owner removes a teammate. Cannot remove yourself — that
+    // would leave the org billing-less; transfer ownership first if needed.
+    if (path === "/v1/team/remove") {
+      if (!tenant.orgId || tenant.role !== "owner") {
+        return json(403, { error: "only a team owner can remove teammates" });
+      }
+      const targetKey = url.searchParams.get("key");
+      if (!targetKey) return json(400, { error: "usage: /v1/team/remove?key=<teammate-key>" });
+      if (targetKey === tenant.key) return json(400, { error: "the owner cannot remove themselves" });
+      const target = await store.get(targetKey);
+      if (!target || target.orgId !== tenant.orgId) return json(404, { error: "no such teammate in your organization" });
+      await store.remove(targetKey);
+      return json(200, { ok: true, removed: targetKey });
     }
 
     if (path === "/v1/dashboard" || path === "/v1/dashboard/data") {
-      // Only an explicitly-flagged admin tenant sees every tenant. Repo scope
-      // must never grant this: every self-service signup tenant is "*"-scoped,
-      // and the customer list (names, plans, usage) is not public data.
+      const reportFor = async (t: typeof tenant) => meter.report(t, t.orgId ? await store.getOrg(t.orgId) : null);
+      // Three tiers, most-privileged first: an explicitly-flagged admin sees
+      // every tenant platform-wide (never inferred from repo scope); a team
+      // owner sees their own org's roster, not other customers'; everyone
+      // else sees only themselves.
       const visibleTenants = tenant.admin
-        ? await Promise.all((await store.list()).map(async (t) => summarizeTenant(t, (await meter.report(t)).requests)))
-        : [summarizeTenant(tenant, (await meter.report(tenant)).requests)];
+        ? await Promise.all((await store.list()).map(async (t) => summarizeTenant(t, (await reportFor(t)).requests)))
+        : tenant.orgId && tenant.role === "owner"
+        ? await Promise.all((await store.membersOf(tenant.orgId)).map(async (t) => summarizeTenant(t, (await reportFor(t)).requests)))
+        : [summarizeTenant(tenant, (await reportFor(tenant)).requests)];
       const data: DashboardData = { service: "mindset-ctx", repos: [], tenants: visibleTenants };
       if (path === "/v1/dashboard/data") return json(200, data);
       return html(200, renderDashboard(data));
@@ -193,7 +243,10 @@ export default {
 
     return json(404, {
       error: "not found",
-      routes: ["/pricing", "/v1/health", "/v1/signup?plan=", "/v1/signup/success", "/v1/stripe/webhook", "/v1/usage", "/v1/dashboard"],
+      routes: [
+        "/pricing", "/v1/health", "/v1/signup?plan=", "/v1/signup/success", "/v1/stripe/webhook",
+        "/v1/usage", "/v1/dashboard", "/v1/team/invite?name=", "/v1/team/remove?key=",
+      ],
     });
   },
 };
