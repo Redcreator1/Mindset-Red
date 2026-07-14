@@ -1,9 +1,10 @@
-import { renderPricing, renderSuccess } from "../pricing.js";
+import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js";
 import { renderHome, renderDocs } from "../home.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
-import { verifyStripeSignatureWeb } from "./hmac.js";
+import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "../githubapp.js";
+import { verifyGithubSignatureWeb, verifyStripeSignatureWeb } from "./hmac.js";
 import {
   KvTenantStore,
   KvUsageMeter,
@@ -28,6 +29,7 @@ export interface Env {
   CTX_KV: KVLike;
   CTX_STRIPE_API_KEY?: string;
   CTX_STRIPE_SECRET?: string;
+  CTX_WEBHOOK_SECRET?: string;
   STRIPE_PRICE_MAP?: string;
   CTX_BASE_URL?: string;
 }
@@ -181,6 +183,81 @@ export default {
       return json(200, { ok: true, ...outcome });
     }
 
+    // GitHub App manifest — public, for one-click App creation.
+    if (path === "/v1/app/manifest") {
+      return json(200, buildAppManifest(baseUrl));
+    }
+
+    // GitHub App lifecycle webhook (installation / installation_repositories).
+    // Auto-provisions (or removes) a tenant from the install itself — the
+    // App-install equivalent of /v1/signup, no pre-existing account needed.
+    if (path === "/v1/app/webhook") {
+      if (req.method !== "POST") return json(405, { error: "app webhook expects POST" });
+      if (!env.CTX_WEBHOOK_SECRET) return json(503, { error: "webhook secret not configured" });
+      const body = await req.text();
+      const ok = await verifyGithubSignatureWeb(body, req.headers.get("x-hub-signature-256"), env.CTX_WEBHOOK_SECRET);
+      if (!ok) return json(401, { error: "invalid webhook signature" });
+      const event = req.headers.get("x-github-event") ?? "unknown";
+      if (event === "ping") return json(200, { ok: true, event, action: "pong" });
+      let payload: AppInstallationEvent;
+      try {
+        payload = JSON.parse(body) as AppInstallationEvent;
+      } catch {
+        return json(400, { error: "invalid JSON payload" });
+      }
+      const outcome = classifyAppEvent(event, payload);
+      if (outcome.kind === "installed") {
+        const existing = await store.findByInstallationId(outcome.installationId);
+        if (!existing) {
+          await store.upsert({
+            key: newTenantKey(),
+            name: outcome.account,
+            repos: outcome.repos.length ? outcome.repos : "*",
+            plan: "free",
+            installationId: outcome.installationId,
+          });
+        }
+      } else if (outcome.kind === "uninstalled") {
+        const installed = await store.findByInstallationId(outcome.installationId);
+        if (installed) await store.remove(installed.key);
+      } else if (outcome.kind === "repos-added" || outcome.kind === "repos-removed") {
+        const installed = await store.findByInstallationId(outcome.installationId);
+        if (installed && installed.repos !== "*") {
+          const scoped = new Set(installed.repos);
+          for (const r of outcome.repos) {
+            if (outcome.kind === "repos-added") scoped.add(r);
+            else scoped.delete(r);
+          }
+          await store.upsert({ ...installed, repos: [...scoped] });
+        }
+      }
+      return json(200, { ok: true, event, outcome });
+    }
+
+    // Browser lands here right after installing the GitHub App (the
+    // manifest's redirect_url). The webhook above usually arrives first and
+    // already minted the tenant; look it up by installation id and hand over
+    // the key exactly once, mirroring the Stripe /v1/signup/success page.
+    if (path === "/v1/app/installed") {
+      const rawInstallationId = url.searchParams.get("installation_id") ?? "";
+      const installationId = Number(rawInstallationId);
+      const tenant = installationId ? await store.findByInstallationId(installationId) : null;
+      const refreshHref = `${path}?${new URLSearchParams({ installation_id: rawInstallationId }).toString()}`;
+      return html(
+        tenant ? 200 : 202,
+        tenant
+          ? renderAppInstalled({ tenantKey: tenant.key, account: tenant.name, repos: tenant.repos })
+          : `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Installation en cours — mindset-ctx</title>
+             <meta http-equiv="refresh" content="2;url=${refreshHref}"></head>
+             <body style="margin:0;font:15px system-ui;background:#0b1220;color:#e2e8f0;padding:48px 32px">
+             <main style="max-width:640px;margin:0 auto;background:#111a2e;border:1px solid #1e293b;border-radius:14px;padding:32px">
+             <h1 style="margin:0 0 16px;font-size:22px">⏳ Installation en cours de finalisation</h1>
+             <p>GitHub nous a confirmé l'installation ; on attend juste la confirmation du webhook, quelques secondes en général.</p>
+             <p>Cette page se rafraîchit automatiquement — vous pouvez aussi <a href="${refreshHref}" style="color:#60a5fa">cliquer ici</a>.</p>
+             </main></body></html>`,
+      );
+    }
+
     // ---------- Authenticated routes ----------
     if (req.method !== "GET") return json(405, { error: "method not allowed" });
 
@@ -245,6 +322,7 @@ export default {
       error: "not found",
       routes: [
         "/pricing", "/v1/health", "/v1/signup?plan=", "/v1/signup/success", "/v1/stripe/webhook",
+        "/v1/app/manifest", "/v1/app/webhook", "/v1/app/installed?installation_id=",
         "/v1/usage", "/v1/dashboard", "/v1/team/invite?name=", "/v1/team/remove?key=",
       ],
     });

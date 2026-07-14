@@ -60,6 +60,12 @@ export class KvTenantStore {
     return true;
   }
 
+  /** Find the tenant created by a given GitHub App installation, if any. */
+  async findByInstallationId(installationId: number): Promise<Tenant | null> {
+    const all = await this.list();
+    return all.find((t) => t.installationId === installationId) ?? null;
+  }
+
   async getOrg(id: string | undefined): Promise<Organization | null> {
     if (!id) return null;
     const raw = await this.kv.get(`org:${id}`);

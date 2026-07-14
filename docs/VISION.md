@@ -136,3 +136,21 @@ personne ; fournisseur de tout le monde.
   d'organisation au signup, webhook qui bascule le plan de l'org (pas du
   tenant), pooling du quota entre sièges, refus 403 pour un membre non-owner,
   et suppression d'un coéquipier (avec garde contre l'auto-suppression).
+- **14/07/2026** — Trou trouvé puis corrigé : le README affirmait depuis la
+  v0.10 que « l'installation de l'App GitHub provisionne automatiquement un
+  tenant », mais cette logique (`/v1/app/manifest`, `/v1/app/webhook`,
+  `/v1/app/installed`) n'a jamais existé que sur `server.ts` (Node
+  self-hosted) — le Worker Cloudflare réellement déployé
+  (`mindset-ctx.mindsetredcom.workers.dev`) n'avait jamais ces routes. Corrigé
+  en portant les trois routes sur `worker/index.ts`, sur KV plutôt que sur le
+  `TenantStore` en mémoire : `findByInstallationId` réajouté à `KvTenantStore`,
+  vérification HMAC via `verifyGithubSignatureWeb` (Web Crypto, déjà écrit
+  dans `worker/hmac.ts` mais pas encore branché), classification des
+  événements réutilisée telle quelle depuis `githubapp.ts` (pur, portable —
+  seul `mintAppJwt`/`getInstallationToken`, qui dépendent de `node:crypto`
+  pour signer en RS256, restent CLI-only : le Worker ne lit jamais le contenu
+  d'un repo, donc n'a pas besoin de token d'installation). `CTX_WEBHOOK_SECRET`
+  ajouté au déploiement CI (`deploy-cloudflare.yml`) à côté des secrets Stripe
+  existants. 3 nouveaux tests Worker mirroient exactement les tests Node
+  existants (`billing.test.ts`) pour garantir que les deux runtimes restent
+  synchronisés. Version 0.15.0.

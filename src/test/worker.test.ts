@@ -263,6 +263,90 @@ test("Worker: team signup creates an org+owner, invite mints a shared-quota memb
   }
 });
 
+test("Worker: App manifest served and App webhook classifies installs", async () => {
+  const kv = new MemKV();
+  const env = { CTX_KV: kv, CTX_WEBHOOK_SECRET: "wh", CTX_BASE_URL: "https://ctx.example.com" };
+  const payload = JSON.stringify({ action: "created", installation: { id: 7, account: { login: "acme" } }, repositories: [{ full_name: "acme/web" }] });
+  const sign = (b: string) => "sha256=" + createHmac("sha256", "wh").update(b).digest("hex");
+
+  const manifest = await (await worker.fetch(new Request("https://ctx.example.com/v1/app/manifest"), env)).json() as { hook_attributes: { url: string } };
+  assert.equal(manifest.hook_attributes.url, "https://ctx.example.com/v1/app/webhook");
+
+  const bad = await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation", "x-hub-signature-256": sign("other") }, body: payload,
+  }), env);
+  assert.equal(bad.status, 401);
+
+  const ok = await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation", "x-hub-signature-256": sign(payload) }, body: payload,
+  }), env);
+  assert.equal(ok.status, 200);
+  const result = await ok.json() as { outcome: { kind: string; account: string } };
+  assert.equal(result.outcome.kind, "installed");
+  assert.equal(result.outcome.account, "acme");
+});
+
+test("Worker: App install auto-provisions a tenant; /v1/app/installed hands over its key", async () => {
+  const kv = new MemKV();
+  const store = new KvTenantStore(kv);
+  const webhookSecret = "wh";
+  const env = { CTX_KV: kv, CTX_WEBHOOK_SECRET: webhookSecret, CTX_BASE_URL: "https://ctx.example.com" };
+  const sign = (b: string) => "sha256=" + createHmac("sha256", webhookSecret).update(b).digest("hex");
+  const installedPayload = JSON.stringify({
+    action: "created", installation: { id: 99, account: { login: "acme" } }, repositories: [{ full_name: "acme/web" }],
+  });
+
+  // Not provisioned yet → 202, holding page.
+  const notYet = await worker.fetch(new Request("https://ctx.example.com/v1/app/installed?installation_id=99"), env);
+  assert.equal(notYet.status, 202);
+
+  // Webhook fires (as GitHub would, right after redirecting the browser).
+  const hook = await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation", "x-hub-signature-256": sign(installedPayload) }, body: installedPayload,
+  }), env);
+  assert.equal(hook.status, 200);
+
+  const tenant = await store.findByInstallationId(99);
+  assert.ok(tenant, "tenant was auto-provisioned");
+  assert.equal(tenant!.plan, "free");
+  assert.deepEqual(tenant!.repos, ["acme/web"]);
+
+  // Re-running the same install is idempotent — no duplicate tenant / key.
+  await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation", "x-hub-signature-256": sign(installedPayload) }, body: installedPayload,
+  }), env);
+  assert.equal((await store.list()).filter((t) => t.installationId === 99).length, 1);
+
+  // Now the redirect page hands over the key, once.
+  const redirected = await worker.fetch(new Request("https://ctx.example.com/v1/app/installed?installation_id=99"), env);
+  assert.equal(redirected.status, 200);
+  const html = await redirected.text();
+  assert.ok(html.includes(tenant!.key));
+  assert.ok(html.includes("acme/web"), "granted repos are listed for trust");
+  assert.ok(/lecture seule/i.test(html), "read-only scope is called out");
+  assert.ok(!html.includes("Paiement validé"), "install page must not reuse the payment success copy");
+
+  // installation_repositories: added/removed narrows the tenant's scope.
+  const addedPayload = JSON.stringify({ installation: { id: 99, account: { login: "acme" } }, repositories_added: [{ full_name: "acme/api" }] });
+  await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation_repositories", "x-hub-signature-256": sign(addedPayload) }, body: addedPayload,
+  }), env);
+  assert.deepEqual(((await store.findByInstallationId(99))!.repos as string[]).sort(), ["acme/api", "acme/web"]);
+
+  // Uninstall removes the tenant entirely.
+  const deletedPayload = JSON.stringify({ action: "deleted", installation: { id: 99, account: { login: "acme" } } });
+  await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", {
+    method: "POST", headers: { "x-github-event": "installation", "x-hub-signature-256": sign(deletedPayload) }, body: deletedPayload,
+  }), env);
+  assert.equal(await store.findByInstallationId(99), null);
+});
+
+test("Worker: App webhook without CTX_WEBHOOK_SECRET configured → 503", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/v1/app/webhook", { method: "POST", body: "{}" }), env);
+  assert.equal(res.status, 503);
+});
+
 test("verifyStripeSignatureWeb matches an openssl-style signature", async () => {
   const secret = "whsec_test";
   const payload = '{"hello":"world"}';
