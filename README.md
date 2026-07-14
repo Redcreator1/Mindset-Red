@@ -40,6 +40,9 @@ node dist/cli.js index [path] --github
 # … ou via l'API GitLab (issues + merge requests ; GITLAB_TOKEN pour privé)
 node dist/cli.js index [path] --gitlab
 
+# … ou via l'API Bitbucket Cloud (pull requests + issues ; BITBUCKET_TOKEN pour privé)
+node dist/cli.js index [path] --bitbucket
+
 # … et calculer les embeddings pour la recherche sémantique
 # (Voyage AI, le partenaire embeddings d'Anthropic ; VOYAGE_API_KEY requis)
 node dist/cli.js index [path] --embed
@@ -98,6 +101,28 @@ Enregistrement dans Claude Code :
 ```bash
 claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/repo
 ```
+
+Enregistrement dans **Cursor** — Cursor parle MCP nativement, aucun code
+supplémentaire n'est nécessaire côté mindset-ctx. Ajoutez dans
+`.cursor/mcp.json` (à la racine du projet, ou dans les réglages MCP globaux
+de Cursor) :
+
+```json
+{
+  "mcpServers": {
+    "mindset-ctx": {
+      "command": "node",
+      "args": ["/chemin/vers/dist/cli.js", "mcp", "/chemin/vers/repo"]
+    }
+  }
+}
+```
+
+Rechargez la fenêtre (ou redémarrez Cursor) — le serveur apparaît dans
+*Settings → MCP*, et `get_context`/`search_memory`/`analyze_repo` deviennent
+des outils que l'agent Cursor peut appeler directement pendant une session de
+vibe coding. (Le nom exact du fichier de config peut évoluer selon la version
+de Cursor — vérifiez leur doc officielle MCP si l'emplacement a changé.)
 
 ### API
 
@@ -213,8 +238,11 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.9 — **hébergé sur Cloudflare Workers** (`src/worker/`, `wrangler.toml`) : gratuit (100k req/j), edge, sans carte bancaire, état multi-tenant dans KV. `.github/workflows/deploy-cloudflare.yml` déploie sur chaque push vers `main`.
 - [x] v0.9 — **`ctx stripe webhook <url>`** crée (ou réutilise, idempotent) le webhook Stripe par API — plus besoin d'accéder au Dashboard Stripe à la main.
 - [x] v0.10 — **provisioning automatique par install GitHub App** (`/v1/app/webhook` crée/retire le tenant, `/v1/app/installed` remet la clé) + **`ctx app token <installation-id>`** mint un token d'installation (JWT App signé RS256 → échange) pour lire les repos privés accordés.
-- [x] v0.10 — **support GitLab** : `ctx index --gitlab` (issues + merge requests via l'API v4) et webhook temps réel (`X-Gitlab-Token`, détection automatique du fournisseur sur le même endpoint que GitHub)
-- [ ] Support Bitbucket ; SSO / RBAC (Team/Enterprise) ; déploiement dédié/VPC pour Enterprise
+- [x] v0.11 — **support GitLab** : `ctx index --gitlab` (issues + merge requests via l'API v4) et webhook temps réel (`X-Gitlab-Token`, détection automatique du fournisseur sur le même endpoint que GitHub)
+- [x] v0.12 — **support Bitbucket** : `ctx index --bitbucket` (pull requests + issues via l'API Cloud v2.0) — ingestion mémoire uniquement ; le webhook temps réel Bitbucket attend une vérification de son mécanisme de sécurité réel avant d'être câblé (Bitbucket n'a pas d'équivalent direct au HMAC GitHub / token GitLab)
+- [x] v0.12 — **déploiement dédié Enterprise** : `Dockerfile` + `docs/DEPLOYMENT.md` (Docker Compose, fichier de tenants monté en volume, variables d'env documentées) — ce que `/pricing` promettait sans l'avoir construit
+- [x] v0.12 — **doc Cursor** : `ctx mcp` fonctionnait déjà avec Cursor (MCP natif) mais n'était pas documenté — `.cursor/mcp.json` ajouté au README
+- [ ] SSO / RBAC (Team/Enterprise) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
 

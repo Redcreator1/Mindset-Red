@@ -6,6 +6,7 @@ import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, writeMemory, mergeRecords, MEMORY_PATH } from "./memory.js";
 import { fetchGitHubMemory, parseRepoFromRemote } from "./github.js";
 import { fetchGitLabMemory, parseGitLabRepoFromRemote } from "./gitlab.js";
+import { fetchBitbucketMemory, parseBitbucketRepoFromRemote } from "./bitbucket.js";
 import { createContextServer } from "./server.js";
 import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
@@ -17,7 +18,7 @@ import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, getInstallationToken, installUrlHint } from "./githubapp.js";
 import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.11.0";
+const VERSION = "0.12.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -28,17 +29,19 @@ Usage:
                                With --ai (requires ANTHROPIC_API_KEY), Claude
                                writes a narrative overview into CLAUDE.md and
                                the architecture doc
-  ctx index [path] [--limit N] [--github|--gitlab] [--repo owner/name] [--embed]
+  ctx index [path] [--limit N] [--github|--gitlab|--bitbucket] [--repo owner/name] [--embed]
                                Index git history into the memory layer
                                (${MEMORY_PATH}). With --github, also ingest
                                PRs, issues and discussions via the GitHub API;
-                               with --gitlab, ingest issues and merge requests
-                               via the GitLab API instead (owner/name inferred
-                               from the origin remote unless --repo is given;
-                               set GITHUB_TOKEN / GITLAB_TOKEN for private
-                               repos or higher rate limits). With --embed
-                               (requires VOYAGE_API_KEY), also compute
-                               embeddings for semantic search
+                               --gitlab does issues + merge requests via the
+                               GitLab API; --bitbucket does pull requests +
+                               issues via the Bitbucket Cloud API (owner/name
+                               inferred from the origin remote unless --repo
+                               is given; set GITHUB_TOKEN / GITLAB_TOKEN /
+                               BITBUCKET_TOKEN for private repos or higher
+                               rate limits). With --embed (requires
+                               VOYAGE_API_KEY), also compute embeddings for
+                               semantic search
   ctx search <query> [--repo-path path] [--semantic|--hybrid] [--limit N]
                                Search the memory layer from the terminal.
                                Default is BM25; --semantic uses embeddings;
@@ -47,10 +50,13 @@ Usage:
             [--webhook-secret S] [--stripe-secret S] [--base-url URL]
                                Serve one or more repos over HTTP for AI tools.
                                Multiple paths enable /v1/repos/:name/… routes;
-                               --api-key (or CTX_API_KEY) sets a single shared
-                               key; --tenants points to a ctx.tenants.json for
-                               per-tenant keys, repo scopes and plan quotas
-                               (rewritten in place on Stripe plan changes);
+                               --port (or CTX_PORT), --api-key (or
+                               CTX_API_KEY) sets a single shared key;
+                               --tenants (or CTX_TENANTS) points to a
+                               ctx.tenants.json for per-tenant keys, repo
+                               scopes and plan quotas (rewritten in place on
+                               Stripe plan changes); see docs/DEPLOYMENT.md
+                               for a Docker/VPC runbook;
                                --webhook-secret (or CTX_WEBHOOK_SECRET) enables
                                the GitHub webhook + App routes; --stripe-secret
                                (or CTX_STRIPE_SECRET, with STRIPE_PRICE_MAP)
@@ -92,7 +98,7 @@ Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github", "--gitlab", "--ai", "--embed", "--semantic", "--hybrid"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--gitlab", "--bitbucket", "--ai", "--embed", "--semantic", "--hybrid"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -172,6 +178,20 @@ async function cmdIndex(root: string, argv: string[]): Promise<void> {
     records = mergeRecords(records, gl);
   }
 
+  if (argv.includes("--bitbucket")) {
+    const repoFlag = arg("--repo", argv);
+    const target = repoFlag
+      ? { owner: repoFlag.split("/")[0], repo: repoFlag.split("/")[1] }
+      : parseBitbucketRepoFromRemote(analyzeRepo(root).remote);
+    if (!target?.owner || !target?.repo) {
+      console.error("Cannot determine Bitbucket repo: no origin remote found — pass --repo owner/name.");
+      process.exit(1);
+    }
+    const bb = await fetchBitbucketMemory(target.owner, target.repo, { limit });
+    console.log(`Fetched ${bb.length} PR/issue record(s) from ${target.owner}/${target.repo}`);
+    records = mergeRecords(records, bb);
+  }
+
   const path = writeMemory(root, records);
   console.log(`Wrote ${records.length} record(s) to ${path}`);
 
@@ -216,14 +236,14 @@ async function cmdSearch(argv: string[]): Promise<void> {
 }
 
 function cmdServe(argv: string[]): void {
-  const port = Number(arg("--port", argv) ?? 4870) || 4870;
+  const port = Number(arg("--port", argv) ?? process.env.CTX_PORT ?? 4870) || 4870;
   const apiKey = arg("--api-key", argv) ?? process.env.CTX_API_KEY;
   const webhookSecret = arg("--webhook-secret", argv) ?? process.env.CTX_WEBHOOK_SECRET;
   const stripeSecret = arg("--stripe-secret", argv) ?? process.env.CTX_STRIPE_SECRET;
   const stripeApiKey = arg("--stripe-api-key", argv) ?? process.env.CTX_STRIPE_API_KEY;
   const stripePriceMap = loadPriceMap(process.env.STRIPE_PRICE_MAP);
   const appBaseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL;
-  const tenantsFile = arg("--tenants", argv);
+  const tenantsFile = arg("--tenants", argv) ?? process.env.CTX_TENANTS;
   const tenantStore = tenantsFile ? TenantStore.fromFile(resolve(tenantsFile)) : undefined;
   const paths = positionals(argv).map((p) => resolve(p));
   if (paths.length === 0) paths.push(resolve("."));
