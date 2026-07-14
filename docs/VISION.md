@@ -154,3 +154,11 @@ personne ; fournisseur de tout le monde.
   existants. 3 nouveaux tests Worker mirroient exactement les tests Node
   existants (`billing.test.ts`) pour garantir que les deux runtimes restent
   synchronisés. Version 0.15.0.
+- **14/07/2026** — Sous-domaine `workers.dev` du compte renommé par
+  l'utilisateur (`mindsetredcom` → `mindset2026`, plus lisible en attendant
+  l'achat du vrai domaine). `CTX_BASE_URL` mis à jour dans `wrangler.toml`
+  (`https://mindset-ctx.mindset2026.workers.dev`) et redéployé — sinon les
+  redirections Stripe et le manifest GitHub App auraient continué de pointer
+  vers l'ancienne URL. Rappel : `mindset-ctx.dev` (achat prévu cette semaine)
+  remplacera ce sous-domaine technique entièrement, voir
+  `docs/DOMAIN-SETUP.md`.
