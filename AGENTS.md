@@ -17,6 +17,7 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot Workspace, …) 
 | Command | What it does |
 | --- | --- |
 | `npm run build` | `tsc` |
+| `npm run prepublishOnly` | `npm run build && npm run test` |
 | `npm run test` | `npm run build && node --test dist/test/*.test.js` |
 | `npm run dev` | `tsc --watch` |
 | `npm run ctx` | `npm run build && node dist/cli.js` |
