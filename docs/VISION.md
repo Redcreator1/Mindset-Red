@@ -162,3 +162,28 @@ personne ; fournisseur de tout le monde.
   vers l'ancienne URL. Rappel : `mindset-ctx.dev` (achat prévu cette semaine)
   remplacera ce sous-domaine technique entièrement, voir
   `docs/DOMAIN-SETUP.md`.
+- **14/07/2026** — SSO Entreprise construite (WorkOS AuthKit), demandée
+  explicitement par l'utilisateur juste après le choix stratégique
+  (`workOS!`). Design retenu : un cookie de session signé plutôt qu'un store
+  de session côté serveur — signé par HMAC avec la clé API WorkOS (déjà un
+  secret que seul le serveur détient), vérifiable sans lookup KV/disque à
+  chaque requête, cohérent avec le reste de l'architecture stateless.
+  `/v1/sso/login` redirige vers la connexion hébergée WorkOS ;
+  `/v1/sso/callback` échange le code contre l'identité et auto-provisionne :
+  premier employé d'une entreprise (`organization_id` WorkOS) → nouvelle
+  organisation mindset-ctx + `role: "owner"` ; employés suivants de la même
+  entreprise → rejoignent la même organisation en `role: "member"`, quota
+  partagé (identifié via `Organization.ssoOrgId`, `Tenant.ssoUserId` —
+  matching par id, pas par email, pour survivre à un changement d'adresse).
+  Connexion personnelle sans entreprise WorkOS → simple tenant solo `free`,
+  symétrique de tous les autres onboardings (Stripe, GitHub App). Câblé en
+  parité complète Node (`server.ts`, `node:crypto`) **et** Worker Cloudflare
+  (`worker/index.ts`, Web Crypto dans `worker/hmac.ts`) dès le départ — pas
+  de dette à rattraper plus tard comme pour le GitHub App. 7 nouveaux tests
+  (Node + Worker) : provisioning owner/member, dédoublonnage sur reconnexion,
+  auth par cookie sur le dashboard, cookie trafiqué rejeté, logout, erreurs
+  de configuration. Version 0.16.0. Reste à faire pour une vraie mise en
+  production : le compte WorkOS lui-même (gratuit, à créer par
+  l'utilisateur) et son Client ID/clé API à ajouter aux secrets GitHub
+  (`WORKOS_CLIENT_ID`, `WORKOS_API_KEY`) pour que le déploiement les pousse
+  vers Cloudflare comme les secrets Stripe.

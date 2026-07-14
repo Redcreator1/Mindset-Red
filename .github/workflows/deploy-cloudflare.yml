@@ -32,6 +32,8 @@ jobs:
           put CTX_STRIPE_API_KEY "${{ secrets.CTX_STRIPE_API_KEY }}"
           put CTX_STRIPE_SECRET  "${{ secrets.CTX_STRIPE_SECRET }}"
           put CTX_WEBHOOK_SECRET "${{ secrets.CTX_WEBHOOK_SECRET }}"
+          put WORKOS_CLIENT_ID   "${{ secrets.WORKOS_CLIENT_ID }}"
+          put WORKOS_API_KEY     "${{ secrets.WORKOS_API_KEY }}"
           put STRIPE_PRICE_MAP   '${{ secrets.STRIPE_PRICE_MAP }}'
 
       - name: Deploy
@@ -54,6 +56,7 @@ jobs:
               echo "   Webhook:   ${URL}/v1/stripe/webhook  (add this in Stripe Dashboard, or run the"
               echo "              'Stripe — bootstrap webhook' workflow to create it automatically)"
               echo "   GH App:    ${URL}/v1/app/manifest  (POST to https://github.com/settings/apps/new to create)"
+              echo "   SSO:       ${URL}/v1/sso/login  (WorkOS AuthKit — register this redirect_uri: ${URL}/v1/sso/callback)"
               exit 0
             fi
             sleep 3

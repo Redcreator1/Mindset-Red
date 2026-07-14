@@ -29,6 +29,8 @@ export interface Tenant {
   orgId?: string;
   /** Role within orgId. Meaningless without orgId. Only "owner" can manage billing/invites. */
   role?: "owner" | "member";
+  /** WorkOS user id, set when this tenant was provisioned by an SSO login rather than signup/App install. */
+  ssoUserId?: string;
 }
 
 /**
@@ -42,6 +44,8 @@ export interface Organization {
   dailyLimit?: number;
   /** Repo names members may access, or "*" for all. */
   repos: string[] | "*";
+  /** WorkOS organization id — links a WorkOS company to this org so every employee who logs in via SSO lands in the same pooled team, not a fresh one each time. */
+  ssoOrgId?: string;
 }
 
 /** Resolve the effective daily quota for a tenant (override > plan). */

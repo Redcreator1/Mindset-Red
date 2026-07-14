@@ -15,6 +15,8 @@ import { createCheckoutSession, newOrgId, newTenantKey, priceForPlan } from "./c
 import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs } from "./home.js";
+import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "./workos.js";
+import { buildClearSessionCookieHeader, buildSessionCookieHeader, parseCookie, SESSION_COOKIE, SESSION_TTL_SEC } from "./session.js";
 
 /**
  * Context API so AI tools (Claude Code, Cursor, …) can pull always-fresh
@@ -73,6 +75,12 @@ export interface ServerOptions {
   checkoutCancelUrl?: string;
   /** Public base URL, used to build the GitHub App manifest. */
   appBaseUrl?: string;
+  /** WorkOS client id; enables GET /v1/sso/login and /v1/sso/callback. */
+  workosClientId?: string;
+  /** WorkOS API key (secret) — exchanges the login callback's code for the user's identity. */
+  workosApiKey?: string;
+  /** Override WorkOS API base (for tests). Default: https://api.workos.com */
+  workosBaseURL?: string;
 }
 
 export const CONTEXT_FILES: Record<string, string> = {
@@ -117,6 +125,30 @@ function validSignature(secret: string, body: Buffer, header: string | undefined
   const given = header.slice("sha256=".length);
   if (given.length !== expected.length) return false;
   return timingSafeEqual(Buffer.from(given, "utf8"), Buffer.from(expected, "utf8"));
+}
+
+/**
+ * Sign/verify a browser session cookie for SSO logins — see session.ts for
+ * the token shape and cookie plumbing shared with the Worker. Signed with
+ * the WorkOS API key: it's already a secret only the server holds, so this
+ * avoids introducing a dedicated session-signing secret just for cookies.
+ */
+function mintSessionToken(tenantKey: string, secret: string, now = Date.now()): string {
+  const expiry = Math.floor(now / 1000) + SESSION_TTL_SEC;
+  const sig = createHmac("sha256", secret).update(`${tenantKey}.${expiry}`).digest("hex");
+  return `${tenantKey}.${expiry}.${sig}`;
+}
+
+function verifySessionToken(token: string | undefined, secret: string): string | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [key, expiryStr, sig] = parts;
+  const expiry = Number(expiryStr);
+  if (!expiry || Math.floor(Date.now() / 1000) > expiry) return null;
+  const expected = createHmac("sha256", secret).update(`${key}.${expiry}`).digest("hex");
+  if (sig.length !== expected.length) return null;
+  return timingSafeEqual(Buffer.from(sig, "utf8"), Buffer.from(expected, "utf8")) ? key : null;
 }
 
 /**
@@ -423,6 +455,90 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // SSO login (WorkOS AuthKit) — sends the browser to WorkOS's hosted login.
+    // Optional ?org=<workos_organization_id> scopes it to one company's SSO
+    // connection; omitted, WorkOS shows its general AuthKit login screen.
+    if (path === "/v1/sso/login") {
+      if (!opts.workosClientId) {
+        sendJson(res, 503, { error: "SSO not configured — set --workos-client-id or WORKOS_CLIENT_ID" });
+        return;
+      }
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      const authUrl = buildWorkosAuthorizationUrl({
+        clientId: opts.workosClientId,
+        redirectUri: `${base.replace(/\/+$/, "")}/v1/sso/callback`,
+        organizationId: url.searchParams.get("org") ?? undefined,
+        baseURL: opts.workosBaseURL,
+      });
+      res.writeHead(302, { location: authUrl });
+      res.end();
+      return;
+    }
+
+    // SSO callback — exchanges WorkOS's one-time code for the user's identity,
+    // auto-provisions an org (first login for a company) and/or a tenant seat
+    // (first login for that person), then sets a signed session cookie. This
+    // is the SSO equivalent of /v1/signup and /v1/app/webhook: no pre-existing
+    // account needed, the identity provider login itself grants access.
+    if (path === "/v1/sso/callback") {
+      if (!opts.workosClientId || !opts.workosApiKey) {
+        sendJson(res, 503, { error: "SSO not configured" });
+        return;
+      }
+      const code = url.searchParams.get("code");
+      if (!code) {
+        sendJson(res, 400, { error: "missing code" });
+        return;
+      }
+      let identity;
+      try {
+        identity = await exchangeWorkosCode({
+          clientId: opts.workosClientId,
+          apiKey: opts.workosApiKey,
+          code,
+          baseURL: opts.workosBaseURL,
+        });
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+
+      let org: Organization | null = identity.organizationId ? store.findOrgBySsoOrgId(identity.organizationId) : null;
+      if (identity.organizationId && !org) {
+        org = { id: newOrgId(), name: identity.email.split("@")[1] ?? identity.email, repos: "*", plan: "free", ssoOrgId: identity.organizationId };
+        store.upsertOrg(org);
+      }
+
+      let tenant = store.findBySsoUserId(identity.userId);
+      if (!tenant) {
+        const isFirstInOrg = org ? store.membersOf(org.id).length === 0 : false;
+        tenant = {
+          key: newTenantKey(),
+          name: identity.email,
+          repos: org ? org.repos : "*",
+          ssoUserId: identity.userId,
+          ...(org ? { orgId: org.id, role: (isFirstInOrg ? "owner" : "member") as "owner" | "member" } : { plan: "free" as PlanId }),
+        };
+        store.upsert(tenant);
+      }
+
+      res.writeHead(302, {
+        location: `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+        "set-cookie": buildSessionCookieHeader(mintSessionToken(tenant.key, opts.workosApiKey)),
+      });
+      res.end();
+      return;
+    }
+
+    // SSO logout — clears the session cookie. Tenant keys aren't revoked (an
+    // owner would use /v1/team/remove for that); this only ends the browser
+    // session that was standing in for one.
+    if (path === "/v1/sso/logout") {
+      res.writeHead(302, { location: `${opts.appBaseUrl ?? ""}/pricing`, "set-cookie": buildClearSessionCookieHeader() });
+      res.end();
+      return;
+    }
+
     // Stripe subscription webhook — flips a tenant's plan on billing changes.
     if (path === "/v1/stripe/webhook") {
       if (req.method !== "POST") {
@@ -521,6 +637,13 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     let org: Organization | null = null;
     if (tenantsEnabled) {
       tenant = store.get(requestKey(req));
+      // No API key on the request? An SSO browser session cookie is an
+      // equally valid credential — verified with the same WorkOS API key
+      // used to sign it, so this only ever applies when SSO is configured.
+      if (!tenant && opts.workosApiKey) {
+        const sessionKey = verifySessionToken(parseCookie(req.headers.cookie, SESSION_COOKIE), opts.workosApiKey);
+        tenant = store.get(sessionKey ?? undefined);
+      }
       if (!tenant) {
         sendJson(res, 401, { error: "unauthorized — pass a tenant key via Authorization: Bearer <key> or x-api-key" });
         return;

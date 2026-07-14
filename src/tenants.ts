@@ -92,6 +92,22 @@ export class TenantStore {
     return null;
   }
 
+  /** Find the tenant provisioned by a given WorkOS SSO user, if any. */
+  findBySsoUserId(ssoUserId: string): Tenant | null {
+    for (const t of this.byKey.values()) {
+      if (t.ssoUserId === ssoUserId) return t;
+    }
+    return null;
+  }
+
+  /** Find the organization linked to a given WorkOS company, if any. */
+  findOrgBySsoOrgId(ssoOrgId: string): Organization | null {
+    for (const o of this.orgsById.values()) {
+      if (o.ssoOrgId === ssoOrgId) return o;
+    }
+    return null;
+  }
+
   /** Remove a tenant by key; persists if file-backed. Returns whether it existed. */
   remove(key: string): boolean {
     const existed = this.byKey.delete(key);
