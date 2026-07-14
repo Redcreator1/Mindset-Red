@@ -15,13 +15,27 @@ Pour n'importe quel repo GitHub, `mindset-ctx` :
 
 ## Installation
 
+**Via npm** (recommandé) :
+
 ```bash
+npm install -g mindset-ctx   # ou : npx mindset-ctx <commande>
+ctx generate .
+```
+
+**Depuis le repo** (pour contribuer ou suivre `main` de près) :
+
+```bash
+git clone https://github.com/Redcreator1/Mindset-Red
+cd Mindset-Red
 npm install
 npm run build
+node dist/cli.js generate .
 ```
 
 Node ≥ 20. Une seule dépendance runtime : le SDK officiel `@anthropic-ai/sdk`
-(utilisé uniquement par le mode `--ai`, optionnel à l'exécution).
+(utilisé uniquement par le mode `--ai`, optionnel à l'exécution). Tous les
+exemples ci-dessous utilisent `node dist/cli.js` (installation depuis le
+repo) — remplacez par `ctx` si vous avez installé via npm.
 
 ## Utilisation
 
@@ -312,7 +326,8 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.14 — **Teams multi-sièges** : signup Team crée une organisation (facturation + quota partagés, pas par siège) avec le premier compte en `role: "owner"` ; `/v1/team/invite` et `/v1/team/remove` gèrent le roster ; `/v1/checkout` refusé aux non-owners ; dashboard scopé (owner → son équipe, admin → toute la plateforme). C'est le prérequis RBAC identifié en v0.13 — désormais construit, sur Node **et** Cloudflare Workers.
 - [x] v0.15 — **parité GitHub App sur le Worker Cloudflare réellement déployé** : `/v1/app/manifest`, `/v1/app/webhook` (HMAC vérifiée via Web Crypto) et `/v1/app/installed` n'existaient que sur `server.ts` (self-hosted) depuis la v0.10, malgré ce que le changelog laissait entendre — le Worker en prod n'avait jamais le provisioning auto par install. Corrigé : les trois routes tournent maintenant sur KV (`store.findByInstallationId`), `CTX_WEBHOOK_SECRET` poussé par `.github/workflows/deploy-cloudflare.yml`.
 - [x] v0.16 — **SSO Entreprise via WorkOS AuthKit** : `/v1/sso/login` (redirige vers la connexion hébergée), `/v1/sso/callback` (échange le code, auto-provisionne organisation + tenant à partir de l'`organization_id`/`user.id` WorkOS, pose un cookie de session signé), `/v1/sso/logout`. Premier employé d'une entreprise → owner, suivants → members poolés, symétrique du signup Stripe et de l'install GitHub App. Le cookie de session est vérifié par HMAC (signé avec la clé API WorkOS) sans store de session dédié — cohérent avec l'architecture stateless existante. Parité Node **et** Cloudflare Workers dès le départ.
-- [x] v0.17 — **extension VS Code** (`editors/vscode/`) : commandes de palette pour générer le contexte/indexer la mémoire, copier la commande MCP, ouvrir le dashboard hébergé ; indicateur de statut (`CLAUDE.md` présent ou non). Package séparé (son propre `package.json`/`tsconfig.json`, manifeste VS Code différent du reste du projet). Pas encore publiée sur le Marketplace (nécessite un compte éditeur Microsoft/Azure DevOps, gratuit — décision différée à l'utilisateur). 6 tests sur la logique pure ; la partie qui appelle l'API `vscode` se vérifie manuellement via `F5`, pas par une suite automatisée (`@vscode/test-electron` a besoin d'un vrai binaire VS Code + d'un display, indisponibles dans ce sandbox).
+- [x] v0.17 — **extension VS Code** (`editors/vscode/`) : commandes de palette pour générer le contexte/indexer la mémoire, copier la commande MCP, ouvrir le dashboard hébergé ; indicateur de statut (`CLAUDE.md` présent ou non). Package séparé (son propre `package.json`/`tsconfig.json`, manifeste VS Code différent du reste du projet). **Publiée sur le VS Code Marketplace** (`mindset-ctx.mindset-ctx`, logo inclus depuis la v0.1.1) juste après. 6 tests sur la logique pure ; la partie qui appelle l'API `vscode` se vérifie manuellement via `F5`, pas par une suite automatisée (`@vscode/test-electron` a besoin d'un vrai binaire VS Code + d'un display, indisponibles dans ce sandbox).
+- [x] v0.18 — **publication npm** (`npm install -g mindset-ctx` / `npx mindset-ctx`) : le CLI ne s'installait jusque-là que par clone GitHub — limite découverte en construisant l'extension VS Code (pas de `npx` par défaut possible). `.github/workflows/npm-publish.yml` publie automatiquement à chaque push sur `main` où la version a changé (idempotent — ne republie pas une version déjà en ligne). `LICENSE` (MIT) ajoutée — déclarée dans `package.json` depuis le début mais jamais présente en tant que fichier. `files`/`types`/`prepublishOnly` ajoutés pour un paquet propre (juste `dist/` + README + LICENSE, tests exclus).
 - [ ] Extension JetBrains (stack différente : Kotlin/Gradle plutôt que TypeScript — mérite sa propre session) ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)

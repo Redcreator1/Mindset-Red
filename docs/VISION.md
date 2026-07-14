@@ -220,3 +220,29 @@ personne ; fournisseur de tout le monde.
   sur le VS Code Marketplace non faite — nécessite un compte éditeur
   Microsoft/Azure DevOps (gratuit), décision et création laissées à
   l'utilisateur.
+- **14/07/2026** — Extension VS Code réellement publiée par l'utilisateur
+  (Publisher `mindset-ctx` créé sur `marketplace.visualstudio.com`, compte
+  Azure DevOps créé pour le jeton — au final l'upload direct du `.vsix` a
+  suffi, pas besoin du token). Logo demandé et généré dans la foulée : crochets
+  de contexte `[ • ]` dans la palette bleu/navy déjà utilisée sur les pages
+  hébergées (`#2563eb` sur `#0b1220`), en SVG (source conservée dans
+  `editors/vscode/icon.svg`) rasterisé en PNG via `cairosvg` (aucun outil de
+  rendu SVG→PNG n'était installé dans ce sandbox — installé à la volée).
+  Version extension 0.1.1. Petit aller-retour : la première tentative de
+  republier a échoué ("la version 0.1.1 existe déjà") — pas un bug, preuve
+  que l'upload précédent avait en fait déjà réussi ; la page publique
+  affichait encore l'ancienne icône par simple cache navigateur.
+- **14/07/2026** — Publication npm attaquée dans la foulée (`ont fonce`),
+  identifiée comme prochain chantier non-bloqué après avoir listé l'état des
+  lieux du roadmap. Corrige une vraie lacune trouvée en construisant
+  l'extension VS Code : `mindset-ctx` n'a jamais été publié sur npm, donc
+  aucun `npx mindset-ctx` possible, et `package.json` déclarait `"license":
+  "MIT"` sans qu'un fichier `LICENSE` existe. Ajouté : `LICENSE` (MIT),
+  `files`/`types`/`prepublishOnly` dans `package.json` (paquet propre —
+  `dist/` sans les tests, README, LICENSE), et
+  `.github/workflows/npm-publish.yml` qui publie automatiquement sur push
+  vers `main` seulement si la version locale diffère de celle déjà publiée
+  (`npm view mindset-ctx version`) — évite un échec bruyant à chaque commit
+  qui n'est pas un bump de version. Nécessite un secret GitHub `NPM_TOKEN`
+  (token "Automation" généré sur npmjs.com) que l'utilisateur doit créer et
+  renseigner — je ne peux pas créer de compte npm à sa place.

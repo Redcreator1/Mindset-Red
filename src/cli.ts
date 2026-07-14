@@ -18,7 +18,7 @@ import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, getInstallationToken, installUrlHint } from "./githubapp.js";
 import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.17.0";
+const VERSION = "0.18.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 

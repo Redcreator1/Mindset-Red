@@ -1,0 +1,42 @@
+name: Publish to npm
+
+# Manual by design: run it from the Actions tab (or `gh workflow run`) when
+# you actually want to publish a new version. Publishing to a public
+# registry is a one-way door — versions can't be pulled back once installed
+# by others — so this isn't wired to fire automatically on every push to
+# main. Flip the trigger to `push: { branches: [main] }` if you'd rather it
+# auto-publish whenever package.json's version changes (still only publishes
+# when the version actually differs from what's live, same guard below).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Publish if the version changed
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          LOCAL_VERSION=$(node -p "require('./package.json').version")
+          PUBLISHED_VERSION=$(npm view mindset-ctx version 2>/dev/null || echo "none")
+          if [ "$LOCAL_VERSION" = "$PUBLISHED_VERSION" ]; then
+            echo "mindset-ctx@$LOCAL_VERSION is already published — skipping."
+            exit 0
+          fi
+          echo "Publishing mindset-ctx@$LOCAL_VERSION (currently published: $PUBLISHED_VERSION)…"
+          npm publish
