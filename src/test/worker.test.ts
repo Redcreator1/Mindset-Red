@@ -263,6 +263,74 @@ test("Worker: team signup creates an org+owner, invite mints a shared-quota memb
   }
 });
 
+test("Worker: SSO callback provisions an org+owner on first company login, a pooled member on the second, and cookie-authenticated sessions", async () => {
+  const kv = new MemKV();
+  const env = { CTX_KV: kv, WORKOS_CLIENT_ID: "client_123", WORKOS_API_KEY: "sk_test_x", CTX_BASE_URL: "https://ctx.example.com" };
+  const identities: Record<string, { user: { id: string; email: string }; organization_id?: string }> = {
+    "code-alice": { user: { id: "user_alice", email: "alice@acme.com" }, organization_id: "org_acme" },
+    "code-bob": { user: { id: "user_bob", email: "bob@acme.com" }, organization_id: "org_acme" },
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (u === "https://api.workos.com/user_management/authenticate" && init?.method === "POST") {
+      const { code } = JSON.parse(String(init.body)) as { code: string };
+      const identity = identities[code];
+      return identity
+        ? new Response(JSON.stringify(identity), { status: 200 })
+        : new Response(JSON.stringify({ error: "invalid_grant" }), { status: 400 });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    const store = new KvTenantStore(kv);
+
+    // Login redirects to WorkOS AuthKit with the right redirect_uri.
+    const login = await worker.fetch(new Request("https://ctx.example.com/v1/sso/login"), env);
+    assert.equal(login.status, 302);
+    assert.equal(new URL(login.headers.get("location")!).searchParams.get("redirect_uri"), "https://ctx.example.com/v1/sso/callback");
+
+    // First employee of "acme" logs in — becomes the org's owner.
+    const first = await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=code-alice"), env);
+    assert.equal(first.status, 302);
+    assert.equal(first.headers.get("location"), "https://ctx.example.com/v1/dashboard");
+    const aliceCookie = first.headers.get("set-cookie")!.split(";")[0];
+    const aliceTenant = await store.findBySsoUserId("user_alice");
+    assert.equal(aliceTenant?.role, "owner");
+    assert.equal((await store.getOrg(aliceTenant!.orgId!))?.ssoOrgId, "org_acme");
+
+    // Second employee of the same company joins the SAME org as a member.
+    const second = await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=code-bob"), env);
+    const bobCookie = second.headers.get("set-cookie")!.split(";")[0];
+    const bobTenant = await store.findBySsoUserId("user_bob");
+    assert.equal(bobTenant?.role, "member");
+    assert.equal(bobTenant?.orgId, aliceTenant!.orgId);
+
+    // The session cookie authenticates like a Bearer key would.
+    const dash = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard/data", { headers: { cookie: aliceCookie } }), env);
+    assert.equal(dash.status, 200);
+    const dashData = await dash.json() as { tenants: { name: string }[] };
+    assert.deepEqual(dashData.tenants.map((t) => t.name).sort(), ["alice@acme.com", "bob@acme.com"]);
+    assert.equal((await worker.fetch(new Request("https://ctx.example.com/v1/usage", { headers: { cookie: bobCookie } }), env)).status, 200);
+
+    // No cookie, no Bearer key → 401, same as ever.
+    assert.equal((await worker.fetch(new Request("https://ctx.example.com/v1/usage"), env)).status, 401);
+
+    // Logout clears the cookie.
+    const logout = await worker.fetch(new Request("https://ctx.example.com/v1/sso/logout"), env);
+    assert.match(logout.headers.get("set-cookie") ?? "", /ctx_session=;.*Max-Age=0/);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("Worker: SSO not configured → 503 on login and callback", async () => {
+  const env = { CTX_KV: new MemKV() };
+  assert.equal((await worker.fetch(new Request("https://ctx.example.com/v1/sso/login"), env)).status, 503);
+  assert.equal((await worker.fetch(new Request("https://ctx.example.com/v1/sso/callback?code=x"), env)).status, 503);
+});
+
 test("Worker: App manifest served and App webhook classifies installs", async () => {
   const kv = new MemKV();
   const env = { CTX_KV: kv, CTX_WEBHOOK_SECRET: "wh", CTX_BASE_URL: "https://ctx.example.com" };

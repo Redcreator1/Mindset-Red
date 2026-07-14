@@ -143,6 +143,9 @@ de Cursor — vérifiez leur doc officielle MCP si l'emplacement a changé.)
 | `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant, ou de son **organisation** si c'est un siège d'équipe |
 | `GET /v1/team/invite?name=…` | L'owner invite un coéquipier — clé mintée, quota et plan partagés (organisation), montrée une seule fois |
 | `GET /v1/team/remove?key=…` | L'owner retire un coéquipier de l'organisation (pas soi-même) |
+| `GET /v1/sso/login?org=…` | Redirige vers la connexion hébergée WorkOS AuthKit (SSO Entreprise) |
+| `GET /v1/sso/callback` | Échange le code WorkOS contre l'identité, provisionne organisation/tenant, pose un cookie de session signé |
+| `GET /v1/sso/logout` | Efface le cookie de session |
 
 Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
 `/v1/context/claude`, `/v1/memory/search`) restent disponibles.
@@ -190,6 +193,29 @@ Facturation et quota vivent sur l'organisation, pas sur chaque tenant :
   d'une organisation (un pool commun, pas un quota par personne).
 - Le dashboard d'un owner montre le roster de son organisation ; un `admin`
   explicite voit toute la plateforme ; tout le monde d'autre ne voit que soi.
+
+**SSO (WorkOS AuthKit)** — alternative à la clé API partagée pour les équipes
+Entreprise : un employé se connecte via `GET /v1/sso/login` (redirige vers la
+connexion hébergée WorkOS — email/mot de passe, Google, ou la connexion SSO
+de son entreprise si configurée côté WorkOS), puis `/v1/sso/callback` :
+
+- Premier employé d'une entreprise (identifiée par l'`organization_id` WorkOS)
+  à se connecter → une organisation mindset-ctx est créée automatiquement et
+  cette personne devient `role: "owner"`.
+- Employés suivants de la **même** entreprise → rejoignent la même
+  organisation en `role: "member"`, quota partagé, pas de doublon.
+- Un cookie de session signé (`ctx_session`, HttpOnly, 7 jours) authentifie
+  ensuite le dashboard exactement comme une clé `Authorization: Bearer`
+  l'aurait fait — pas de nouveau store de session, la signature (HMAC avec la
+  clé API WorkOS) suffit à le vérifier à la volée.
+- Connexion personnelle sans entreprise WorkOS derrière → simple tenant solo,
+  plan `free`, comme n'importe quel autre onboarding.
+
+Configuration : créer une App sur [workos.com](https://workos.com) (gratuit
+pour démarrer), déclarer `https://<votre-domaine>/v1/sso/callback` comme
+redirect URI, puis exposer `WORKOS_CLIENT_ID` et `WORKOS_API_KEY` (`sk_test_…`
+en bac à sable, `sk_live_…` en prod) — `--workos-client-id`/`--workos-api-key`
+en self-hosted, secrets Cloudflare en hébergé (voir la section déploiement).
 
 ### Édition manuelle préservée
 
@@ -273,7 +299,8 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.13 — **vitrine du domaine racine** (`/`, `src/home.ts`) séparée de `/pricing`, **doc index** (`/docs`) qui pointe vers le README/docs plutôt que de le dupliquer ; runbook de branchement du domaine (`docs/DOMAIN-SETUP.md`) — au moment de l'achat de `mindset-ctx.dev`, ce n'est plus qu'une opération DNS
 - [x] v0.14 — **Teams multi-sièges** : signup Team crée une organisation (facturation + quota partagés, pas par siège) avec le premier compte en `role: "owner"` ; `/v1/team/invite` et `/v1/team/remove` gèrent le roster ; `/v1/checkout` refusé aux non-owners ; dashboard scopé (owner → son équipe, admin → toute la plateforme). C'est le prérequis RBAC identifié en v0.13 — désormais construit, sur Node **et** Cloudflare Workers.
 - [x] v0.15 — **parité GitHub App sur le Worker Cloudflare réellement déployé** : `/v1/app/manifest`, `/v1/app/webhook` (HMAC vérifiée via Web Crypto) et `/v1/app/installed` n'existaient que sur `server.ts` (self-hosted) depuis la v0.10, malgré ce que le changelog laissait entendre — le Worker en prod n'avait jamais le provisioning auto par install. Corrigé : les trois routes tournent maintenant sur KV (`store.findByInstallationId`), `CTX_WEBHOOK_SECRET` poussé par `.github/workflows/deploy-cloudflare.yml`.
-- [ ] SSO (Team/Enterprise, probablement via WorkOS plutôt que du SAML fait maison) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
+- [x] v0.16 — **SSO Entreprise via WorkOS AuthKit** : `/v1/sso/login` (redirige vers la connexion hébergée), `/v1/sso/callback` (échange le code, auto-provisionne organisation + tenant à partir de l'`organization_id`/`user.id` WorkOS, pose un cookie de session signé), `/v1/sso/logout`. Premier employé d'une entreprise → owner, suivants → members poolés, symétrique du signup Stripe et de l'install GitHub App. Le cookie de session est vérifié par HMAC (signé avec la clé API WorkOS) sans store de session dédié — cohérent avec l'architecture stateless existante. Parité Node **et** Cloudflare Workers dès le départ.
+- [ ] Extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
 
@@ -305,8 +332,14 @@ npx wrangler deploy
 #    Crée l'App depuis le manifest : POST https://<ton-worker>.workers.dev/v1/app/manifest
 #    vers https://github.com/settings/apps/new
 
-# 5. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
-#    API est activée automatiquement par le webhook (Stripe ou GitHub App).
+# 5. (optionnel) SSO Entreprise via WorkOS — créer une App sur workos.com,
+#    déclarer https://<ton-worker>.workers.dev/v1/sso/callback comme redirect URI :
+npx wrangler secret put WORKOS_CLIENT_ID
+npx wrangler secret put WORKOS_API_KEY
+npx wrangler deploy
+
+# 6. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
+#    API est activée automatiquement par le webhook (Stripe, GitHub App ou SSO).
 #    Zéro humain dans la boucle.
 ```
 

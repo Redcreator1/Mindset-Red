@@ -66,6 +66,20 @@ export class KvTenantStore {
     return all.find((t) => t.installationId === installationId) ?? null;
   }
 
+  /** Find the tenant provisioned by a given WorkOS SSO user, if any. */
+  async findBySsoUserId(ssoUserId: string): Promise<Tenant | null> {
+    const all = await this.list();
+    return all.find((t) => t.ssoUserId === ssoUserId) ?? null;
+  }
+
+  /** Find the organization linked to a given WorkOS company, if any. */
+  async findOrgBySsoOrgId(ssoOrgId: string): Promise<Organization | null> {
+    const { keys } = await this.kv.list({ prefix: "org:" });
+    const results = await Promise.all(keys.map((k) => this.kv.get(k.name)));
+    const orgs = results.filter((r): r is string => r !== null).map((r) => JSON.parse(r) as Organization);
+    return orgs.find((o) => o.ssoOrgId === ssoOrgId) ?? null;
+  }
+
   async getOrg(id: string | undefined): Promise<Organization | null> {
     if (!id) return null;
     const raw = await this.kv.get(`org:${id}`);

@@ -63,3 +63,24 @@ export async function verifyGithubSignatureWeb(
   const expected = await hmacSha256Hex(secret, payload);
   return timingSafeEqualHex(header.slice("sha256=".length), expected);
 }
+
+const SESSION_TTL_SEC = 60 * 60 * 24 * 7; // 7 days — mirrors session.ts's SESSION_TTL_SEC
+
+/** Mint a signed SSO session token: "<tenantKey>.<expiry>.<hmac>" (Web Crypto). */
+export async function mintSessionTokenWeb(tenantKey: string, secret: string, now = Date.now()): Promise<string> {
+  const expiry = Math.floor(now / 1000) + SESSION_TTL_SEC;
+  const sig = await hmacSha256Hex(secret, `${tenantKey}.${expiry}`);
+  return `${tenantKey}.${expiry}.${sig}`;
+}
+
+/** Verify a signed SSO session token, returning the tenant key if valid and unexpired. */
+export async function verifySessionTokenWeb(token: string | undefined, secret: string): Promise<string | null> {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [key, expiryStr, sig] = parts;
+  const expiry = Number(expiryStr);
+  if (!expiry || Math.floor(Date.now() / 1000) > expiry) return null;
+  const expected = await hmacSha256Hex(secret, `${key}.${expiry}`);
+  return timingSafeEqualHex(sig, expected) ? key : null;
+}
