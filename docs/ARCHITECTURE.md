@@ -8,11 +8,11 @@ _Auto-generated snapshot of the repository structure. Narrative sections live be
 
 - **Name:** mindset-ctx
 - **Description:** Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub or GitLab repo, with a memory layer over its history.
-- **Primary languages:** TypeScript (38 files), Markdown (8 files), YAML (6 files), JSON (3 files), TOML (1 file)
+- **Primary languages:** TypeScript (39 files), Markdown (9 files), YAML (6 files), JSON (3 files), TOML (1 file)
 - **Frameworks / tooling:** TypeScript
 - **Manifests:** package.json
 - **Tests:** yes · **CI:** yes
-- **Files scanned:** 60
+- **Files scanned:** 62
 - **Remote:** https://github.com/Redcreator1/Mindset-Red
 
 ## Top-level layout
