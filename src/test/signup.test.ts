@@ -124,6 +124,25 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(pricing.status, 200);
     assert.match(await pricing.text(), /Passer Pro/);
 
+    // / is the vitrine, not the pricing page and not the health JSON that
+    // used to shadow it (a real bug: both branches checked path === "/",
+    // but the health-check branch was listed first, so / never reached
+    // pricing at all until this was split into three distinct routes).
+    const home = await fetch(`${base}/`);
+    assert.equal(home.status, 200);
+    const homeBody = await home.text();
+    assert.ok(homeBody.startsWith("<!doctype html>"));
+    assert.ok(!homeBody.includes("Passer Pro"));
+
+    // /v1/health still returns its own JSON, unaffected by the split.
+    const health = await fetch(`${base}/v1/health`);
+    assert.equal((await health.json() as { ok: boolean }).ok, true);
+
+    // /docs renders the documentation index.
+    const docs = await fetch(`${base}/docs`);
+    assert.equal(docs.status, 200);
+    assert.match(await docs.text(), /Documentation/);
+
     // /v1/signup mints a tenant, calls Stripe, redirects to Checkout.
     const signup = await fetch(`${base}/v1/signup?plan=pro`, { redirect: "manual" });
     assert.equal(signup.status, 302);

@@ -242,7 +242,9 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.12 — **support Bitbucket** : `ctx index --bitbucket` (pull requests + issues via l'API Cloud v2.0) — ingestion mémoire uniquement ; le webhook temps réel Bitbucket attend une vérification de son mécanisme de sécurité réel avant d'être câblé (Bitbucket n'a pas d'équivalent direct au HMAC GitHub / token GitLab)
 - [x] v0.12 — **déploiement dédié Enterprise** : `Dockerfile` + `docs/DEPLOYMENT.md` (Docker Compose, fichier de tenants monté en volume, variables d'env documentées) — ce que `/pricing` promettait sans l'avoir construit
 - [x] v0.12 — **doc Cursor** : `ctx mcp` fonctionnait déjà avec Cursor (MCP natif) mais n'était pas documenté — `.cursor/mcp.json` ajouté au README
-- [ ] SSO / RBAC (Team/Enterprise) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
+- [x] v0.13 — **vitrine du domaine racine** (`/`, `src/home.ts`) séparée de `/pricing`, **doc index** (`/docs`) qui pointe vers le README/docs plutôt que de le dupliquer ; runbook de branchement du domaine (`docs/DOMAIN-SETUP.md`) — au moment de l'achat de `mindset-ctx.dev`, ce n'est plus qu'une opération DNS
+- [ ] **Teams (multi-seat) + RBAC** : nécessite d'abord un concept d'organisation avec plusieurs clés membres et facturation partagée — un simple champ "rôle" n'a nulle part où s'accrocher tant que le modèle reste 1 clé = 1 tenant. Voir `docs/VISION.md` pour le plan technique.
+- [ ] SSO (Team/Enterprise, probablement via WorkOS plutôt que du SAML fait maison) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
 
