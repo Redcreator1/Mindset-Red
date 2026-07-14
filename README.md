@@ -139,8 +139,10 @@ de Cursor — vérifiez leur doc officielle MCP si l'emplacement a changé.)
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) : provisionne/déprovisionne un tenant automatiquement |
 | `GET /v1/app/installed?installation_id=…` | Redirection post-install : remet la clé API du tenant auto-provisionné (une seule fois) |
-| `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) |
-| `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant |
+| `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) — refusé (403) à un membre d'équipe non-owner |
+| `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant, ou de son **organisation** si c'est un siège d'équipe |
+| `GET /v1/team/invite?name=…` | L'owner invite un coéquipier — clé mintée, quota et plan partagés (organisation), montrée une seule fois |
+| `GET /v1/team/remove?key=…` | L'owner retire un coéquipier de l'organisation (pas soi-même) |
 
 Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
 `/v1/context/claude`, `/v1/memory/search`) restent disponibles.
@@ -154,7 +156,7 @@ Avec un seul repo servi, les raccourcis sans préfixe (`/v1/analysis`,
 ```json
 { "tenants": [
     { "key": "sk-alice", "name": "alice", "repos": ["frontend"], "plan": "pro" },
-    { "key": "sk-admin", "name": "admin", "repos": "*", "plan": "enterprise" }
+    { "key": "sk-ops", "name": "ops", "repos": "*", "plan": "enterprise", "admin": true }
 ] }
 ```
 
@@ -162,6 +164,32 @@ Chaque clé est scopée à ses repos (403 hors scope), le **plan** décide du qu
 journalier (`free` 200 · `pro` 5 000 · `team` 50 000 · `enterprise` illimité —
 429 au-delà), et `/v1/usage` expose le métering. Les webhooks Stripe font
 basculer le plan automatiquement et le changement est persisté dans le fichier.
+`admin: true` doit être posé à la main (jamais déduit du scope `"*"`, que des
+comptes clients légitimes utilisent aussi) — c'est ce qui donne la vue
+dashboard de toute la plateforme.
+
+**Organisations (Team multi-sièges)** — le plan Team est multi-utilisateurs
+par nature : le signup self-service (`/v1/signup?plan=team`) crée
+automatiquement une organisation et met le premier compte en `role: "owner"`.
+Facturation et quota vivent sur l'organisation, pas sur chaque tenant :
+
+```json
+{ "tenants": [
+    { "key": "sk-owner", "name": "owner", "repos": "*", "orgId": "org-1", "role": "owner" },
+    { "key": "sk-bob",   "name": "bob",   "repos": "*", "orgId": "org-1", "role": "member" }
+  ],
+  "organizations": [
+    { "id": "org-1", "name": "acme", "repos": "*", "plan": "team" }
+] }
+```
+
+- Seul `role: "owner"` peut appeler `/v1/checkout` (changer le plan) ou
+  `/v1/team/invite` / `/v1/team/remove` (gérer les coéquipiers) — un `member`
+  reçoit 403.
+- `/v1/usage` et le quota journalier sont **partagés** entre tous les sièges
+  d'une organisation (un pool commun, pas un quota par personne).
+- Le dashboard d'un owner montre le roster de son organisation ; un `admin`
+  explicite voit toute la plateforme ; tout le monde d'autre ne voit que soi.
 
 ### Édition manuelle préservée
 
@@ -243,7 +271,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.12 — **déploiement dédié Enterprise** : `Dockerfile` + `docs/DEPLOYMENT.md` (Docker Compose, fichier de tenants monté en volume, variables d'env documentées) — ce que `/pricing` promettait sans l'avoir construit
 - [x] v0.12 — **doc Cursor** : `ctx mcp` fonctionnait déjà avec Cursor (MCP natif) mais n'était pas documenté — `.cursor/mcp.json` ajouté au README
 - [x] v0.13 — **vitrine du domaine racine** (`/`, `src/home.ts`) séparée de `/pricing`, **doc index** (`/docs`) qui pointe vers le README/docs plutôt que de le dupliquer ; runbook de branchement du domaine (`docs/DOMAIN-SETUP.md`) — au moment de l'achat de `mindset-ctx.dev`, ce n'est plus qu'une opération DNS
-- [ ] **Teams (multi-seat) + RBAC** : nécessite d'abord un concept d'organisation avec plusieurs clés membres et facturation partagée — un simple champ "rôle" n'a nulle part où s'accrocher tant que le modèle reste 1 clé = 1 tenant. Voir `docs/VISION.md` pour le plan technique.
+- [x] v0.14 — **Teams multi-sièges** : signup Team crée une organisation (facturation + quota partagés, pas par siège) avec le premier compte en `role: "owner"` ; `/v1/team/invite` et `/v1/team/remove` gèrent le roster ; `/v1/checkout` refusé aux non-owners ; dashboard scopé (owner → son équipe, admin → toute la plateforme). C'est le prérequis RBAC identifié en v0.13 — désormais construit, sur Node **et** Cloudflare Workers.
 - [ ] SSO (Team/Enterprise, probablement via WorkOS plutôt que du SAML fait maison) ; extension VS Code/JetBrains ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur une intégration IdP, un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)

@@ -23,6 +23,11 @@ export function newTenantKey(): string {
   return "sk_ctx_" + randomBytes(24).toString("base64url");
 }
 
+/** Mint a fresh, unguessable organization id (for Team-plan multi-seat signup). */
+export function newOrgId(): string {
+  return "org_ctx_" + randomBytes(16).toString("base64url");
+}
+
 export interface CheckoutOptions {
   secretKey: string;
   /** Stripe Price ID to subscribe to (one of your plan prices). */

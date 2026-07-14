@@ -7,11 +7,11 @@ import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, loadMemory, mergeRecords, searchMemory, writeMemory } from "./memory.js";
 import { semanticSearch } from "./embeddings.js";
 import { hybridSearch } from "./hybrid.js";
-import { TenantStore, UsageMeter, tenantMayAccess, type Tenant } from "./tenants.js";
+import { TenantStore, UsageMeter, tenantCanManageBilling, tenantMayAccess, type Organization, type Tenant } from "./tenants.js";
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
 import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
-import { createCheckoutSession, newTenantKey, priceForPlan } from "./checkout.js";
+import { createCheckoutSession, newOrgId, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs } from "./home.js";
@@ -212,7 +212,14 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
   const names = Object.keys(repos);
   const soleName = names.length === 1 ? names[0] : null;
   const store = opts.tenantStore ?? new TenantStore(opts.tenants ?? []);
-  const tenantsEnabled = store.all().length > 0;
+  // Whether tenant-based auth is active at all — decided by whether the
+  // caller opted in (passed a store or a tenants list), NOT by whether the
+  // store currently happens to hold any tenants. The old `store.all().length
+  // > 0` check froze this at construction time: a store that legitimately
+  // starts empty (self-service signup growing it later, or an owner using
+  // /v1/team/invite) would never again recognize ANY tenant as authenticated,
+  // since this was only ever evaluated once.
+  const tenantsEnabled = opts.tenantStore !== undefined || opts.tenants !== undefined;
   const priceMap = opts.stripePriceMap ?? {};
   const meter = new UsageMeter();
 
@@ -268,7 +275,16 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       // Mint a fresh tenant key and add it as a free tenant. The webhook flips
       // it to the paid plan once the subscription is created.
       const tenantKey = newTenantKey();
-      store.upsert({ key: tenantKey, name: `signup-${tenantKey.slice(-8)}`, repos: "*", plan: "free" });
+      // Team is multi-seat by definition — the signing-up tenant becomes the
+      // org's owner (able to invite teammates and manage billing) rather than
+      // a standalone tenant with its own plan. Pro stays a plain solo tenant.
+      if (plan === "team") {
+        const orgId = newOrgId();
+        store.upsertOrg({ id: orgId, name: `team-${orgId.slice(-8)}`, repos: "*", plan: "free" });
+        store.upsert({ key: tenantKey, name: `signup-${tenantKey.slice(-8)}`, repos: "*", orgId, role: "owner" });
+      } else {
+        store.upsert({ key: tenantKey, name: `signup-${tenantKey.slice(-8)}`, repos: "*", plan: "free" });
+      }
       const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
       try {
         const session = await createCheckoutSession({
@@ -432,7 +448,12 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       }
       const outcome = resolveSubscriptionEvent(event, priceMap);
       if (outcome.action === "set-plan" || outcome.action === "downgrade") {
-        const applied = store.setPlan(outcome.tenantKey, outcome.plan);
+        // A team's billing lives on the organization, not the individual
+        // tenant who happened to check out — every teammate shares it.
+        const billedTenant = store.get(outcome.tenantKey);
+        const applied = billedTenant?.orgId
+          ? store.setOrgPlan(billedTenant.orgId, outcome.plan)
+          : store.setPlan(outcome.tenantKey, outcome.plan);
         sendJson(res, 200, { ok: true, ...outcome, applied });
       } else {
         sendJson(res, 200, { ok: true, ...outcome });
@@ -497,14 +518,18 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
 
     // Authentication + authorization.
     let tenant: Tenant | null = null;
+    let org: Organization | null = null;
     if (tenantsEnabled) {
       tenant = store.get(requestKey(req));
       if (!tenant) {
         sendJson(res, 401, { error: "unauthorized — pass a tenant key via Authorization: Bearer <key> or x-api-key" });
         return;
       }
-      if (!meter.consume(tenant)) {
-        sendJson(res, 429, { error: "daily quota exceeded", ...meter.report(tenant) });
+      // A team seat's quota is pooled on the organization, not the individual
+      // tenant — every teammate draws from the same daily counter.
+      org = tenant.orgId ? store.getOrg(tenant.orgId) : null;
+      if (!meter.consume(tenant, org)) {
+        sendJson(res, 429, { error: "daily quota exceeded", ...meter.report(tenant, org) });
         return;
       }
     } else if (opts.apiKey && requestKey(req) !== opts.apiKey) {
@@ -517,14 +542,20 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         sendJson(res, 404, { error: "usage metering is only available in tenants mode (--tenants)" });
         return;
       }
-      sendJson(res, 200, meter.report(tenant));
+      sendJson(res, 200, meter.report(tenant, org));
       return;
     }
 
     // Checkout: the calling tenant requests an upgrade → Stripe payment URL.
+    // Team seats: only the owner may change billing — a plan change affects
+    // every teammate's shared quota, not just the caller's.
     if (path === "/v1/checkout") {
       if (!tenant) {
         sendJson(res, 404, { error: "checkout is only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!tenantCanManageBilling(tenant)) {
+        sendJson(res, 403, { error: "only the team owner can change billing" });
         return;
       }
       if (!opts.stripeApiKey) {
@@ -557,20 +588,78 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Team: the org owner invites a teammate — mints a key sharing the same
+    // org (and so the same pooled quota + plan), shown exactly once.
+    if (path === "/v1/team/invite") {
+      if (!tenant) {
+        sendJson(res, 404, { error: "team invites are only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!tenant.orgId || tenant.role !== "owner") {
+        sendJson(res, 403, { error: "only a team owner can invite teammates" });
+        return;
+      }
+      const name = url.searchParams.get("name");
+      if (!name) {
+        sendJson(res, 400, { error: "usage: /v1/team/invite?name=<teammate>" });
+        return;
+      }
+      const org = store.getOrg(tenant.orgId)!;
+      const key = newTenantKey();
+      store.upsert({ key, name, repos: org.repos, orgId: org.id, role: "member" });
+      sendJson(res, 200, { ok: true, key, name, org: org.name });
+      return;
+    }
+
+    // Team: the org owner removes a teammate. Cannot remove yourself — that
+    // would leave the org billing-less; transfer ownership first if needed.
+    if (path === "/v1/team/remove") {
+      if (!tenant) {
+        sendJson(res, 404, { error: "team management is only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!tenant.orgId || tenant.role !== "owner") {
+        sendJson(res, 403, { error: "only a team owner can remove teammates" });
+        return;
+      }
+      const targetKey = url.searchParams.get("key");
+      if (!targetKey) {
+        sendJson(res, 400, { error: "usage: /v1/team/remove?key=<teammate-key>" });
+        return;
+      }
+      if (targetKey === tenant.key) {
+        sendJson(res, 400, { error: "the owner cannot remove themselves" });
+        return;
+      }
+      const target = store.get(targetKey);
+      if (!target || target.orgId !== tenant.orgId) {
+        sendJson(res, 404, { error: "no such teammate in your organization" });
+        return;
+      }
+      store.remove(targetKey);
+      sendJson(res, 200, { ok: true, removed: targetKey });
+      return;
+    }
+
     // Dashboard: HTML shell at /v1/dashboard, JSON at /v1/dashboard/data.
     // Scoped to the repos/tenants the caller may see.
     if (path === "/v1/dashboard" || path === "/v1/dashboard/data") {
       const visibleRepos = (tenant ? names.filter((n) => tenantMayAccess(tenant, n)) : names).map((name) =>
         summarizeRecords(name, loadMemory(repos[name])),
       );
-      // Only an explicitly-flagged admin tenant sees every tenant. Customer
-      // tenants are often "*"-scoped too (self-service signup, App installs
-      // covering all repos), so repo scope must never grant the operator
-      // view. Keyless (shared-key) mode still sees all — it IS the operator.
-      const visibleTenants =
-        tenant && !tenant.admin
-          ? [summarizeTenant(tenant, meter.report(tenant).requests)]
-          : store.all().map((t) => summarizeTenant(t, meter.report(t).requests));
+      const reportFor = (t: Tenant) => meter.report(t, t.orgId ? store.getOrg(t.orgId) : null);
+      // Three tiers, most-privileged first: an explicitly-flagged admin sees
+      // every tenant platform-wide (never inferred from repo scope — customer
+      // tenants are often "*"-scoped too); a team owner sees their own org's
+      // roster, not other customers'; everyone else sees only themselves.
+      // Keyless (shared-key) mode has no tenant at all — the caller IS the operator.
+      const visibleTenants = !tenant
+        ? store.all().map((t) => summarizeTenant(t, reportFor(t).requests))
+        : tenant.admin
+        ? store.all().map((t) => summarizeTenant(t, reportFor(t).requests))
+        : tenant.orgId && tenant.role === "owner"
+        ? store.membersOf(tenant.orgId).map((t) => summarizeTenant(t, reportFor(t).requests))
+        : [summarizeTenant(tenant, reportFor(tenant).requests)];
       const data: DashboardData = { service: "mindset-ctx", repos: visibleRepos, tenants: visibleTenants };
       if (path === "/v1/dashboard/data") {
         sendJson(res, 200, data);

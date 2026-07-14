@@ -170,6 +170,99 @@ test("Worker: /v1/signup/success refuses to hand over the key until the session 
   }
 });
 
+test("Worker: team signup creates an org+owner, invite mints a shared-quota member, only the owner controls billing/roster", async () => {
+  const kv = new MemKV();
+  const env = { CTX_KV: kv, CTX_STRIPE_API_KEY: "sk_test_x", STRIPE_PRICE_MAP: JSON.stringify({ price_team_test: "team" }) };
+  const sessions: Record<string, { client_reference_id: string }> = {};
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (u === "https://api.stripe.com/v1/checkout/sessions" && init?.method === "POST") {
+      const params = new URLSearchParams(String(init.body));
+      const id = `cs_test_${Math.random().toString(36).slice(2, 10)}`;
+      sessions[id] = { client_reference_id: params.get("client_reference_id") ?? "" };
+      return new Response(JSON.stringify({ id, url: `https://checkout.stripe.com/test/${id}` }), { status: 200 });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    // 1. Self-service signup for the Team plan mints an owner + a fresh org.
+    const signup = await worker.fetch(new Request("https://ctx.example.com/v1/signup?plan=team"), env);
+    assert.equal(signup.status, 302);
+    const sessionId = new URL(signup.headers.get("location")!).pathname.split("/").pop()!;
+    const ownerKey = sessions[sessionId].client_reference_id;
+
+    const store = new KvTenantStore(kv);
+    const ownerTenant = await store.get(ownerKey);
+    assert.ok(ownerTenant?.orgId, "signup created an org and put the tenant in it");
+    assert.equal(ownerTenant?.role, "owner");
+    const orgId = ownerTenant!.orgId!;
+    assert.equal((await store.getOrg(orgId))?.plan, "free", "unpaid until the webhook confirms the subscription");
+
+    // 2. A solo tenant (no org) cannot invite.
+    await store.upsert({ key: "sk-solo", name: "solo", repos: "*", plan: "free" });
+    const soloInvite = await worker.fetch(
+      new Request("https://ctx.example.com/v1/team/invite?name=bob", { headers: { authorization: "Bearer sk-solo" } }),
+      env,
+    );
+    assert.equal(soloInvite.status, 403);
+
+    // 3. The owner invites a teammate.
+    const invite = await worker.fetch(
+      new Request("https://ctx.example.com/v1/team/invite?name=bob", { headers: { authorization: `Bearer ${ownerKey}` } }),
+      env,
+    );
+    assert.equal(invite.status, 200);
+    const { key: memberKey } = await invite.json() as { key: string };
+    assert.equal((await store.get(memberKey))?.orgId, orgId);
+    assert.equal((await store.get(memberKey))?.role, "member");
+
+    // 4. Usage is pooled across both seats.
+    await worker.fetch(new Request("https://ctx.example.com/v1/usage", { headers: { authorization: `Bearer ${ownerKey}` } }), env);
+    const memberUsageRes = await worker.fetch(
+      new Request("https://ctx.example.com/v1/usage", { headers: { authorization: `Bearer ${memberKey}` } }),
+      env,
+    );
+    const memberUsage = await memberUsageRes.json() as { requests: number };
+    assert.ok(memberUsage.requests >= 2, "owner's and member's calls land in the same shared pool");
+
+    // 5. A member cannot invite or manage the roster.
+    const memberInvite = await worker.fetch(
+      new Request("https://ctx.example.com/v1/team/invite?name=carol", { headers: { authorization: `Bearer ${memberKey}` } }),
+      env,
+    );
+    assert.equal(memberInvite.status, 403);
+
+    // 6. The owner's dashboard shows exactly the org's roster — not "sk-solo".
+    const dash = await worker.fetch(
+      new Request("https://ctx.example.com/v1/dashboard/data", { headers: { authorization: `Bearer ${ownerKey}` } }),
+      env,
+    );
+    const dashData = await dash.json() as { tenants: { name: string }[] };
+    assert.deepEqual(dashData.tenants.map((t) => t.name).sort(), ["bob", `signup-${ownerKey.slice(-8)}`]);
+
+    // 7. The owner cannot remove themselves…
+    const selfRemove = await worker.fetch(
+      new Request(`https://ctx.example.com/v1/team/remove?key=${ownerKey}`, { headers: { authorization: `Bearer ${ownerKey}` } }),
+      env,
+    );
+    assert.equal(selfRemove.status, 400);
+
+    // …but can remove the teammate, who then loses access entirely.
+    const remove = await worker.fetch(
+      new Request(`https://ctx.example.com/v1/team/remove?key=${memberKey}`, { headers: { authorization: `Bearer ${ownerKey}` } }),
+      env,
+    );
+    assert.equal(remove.status, 200);
+    assert.equal(await store.get(memberKey), null);
+    const revoked = await worker.fetch(new Request("https://ctx.example.com/v1/usage", { headers: { authorization: `Bearer ${memberKey}` } }), env);
+    assert.equal(revoked.status, 401);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("verifyStripeSignatureWeb matches an openssl-style signature", async () => {
   const secret = "whsec_test";
   const payload = '{"hello":"world"}';
