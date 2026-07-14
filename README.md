@@ -37,6 +37,9 @@ node dist/cli.js index [path] --limit 500
 #  GITHUB_TOKEN pour les repos privés / plus de rate limit)
 node dist/cli.js index [path] --github
 
+# … ou via l'API GitLab (issues + merge requests ; GITLAB_TOKEN pour privé)
+node dist/cli.js index [path] --gitlab
+
 # … et calculer les embeddings pour la recherche sémantique
 # (Voyage AI, le partenaire embeddings d'Anthropic ; VOYAGE_API_KEY requis)
 node dist/cli.js index [path] --embed
@@ -107,7 +110,7 @@ claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/rep
 | `GET /v1/repos/:repo/context/claude` | `CLAUDE.md` (aussi : `agents`, `architecture`, `contributing`, `prompts`) |
 | `GET /v1/dashboard` · `/v1/dashboard/data` | Dashboard web (HTML/JSON) : repos, tenants, plans, quotas, mémoire — scopé par tenant |
 | `GET /v1/repos/:repo/memory/search?q=…&mode=…` | Recherche **BM25** (défaut), **sémantique** (`mode=semantic`) ou **hybride** (`mode=hybrid`, fusion RRF) |
-| `POST /v1/repos/:repo/webhook` | Webhook GitHub (push/issues/PR) : HMAC `X-Hub-Signature-256` vérifiée, mémoire ré-indexée, contexte régénéré sur push |
+| `POST /v1/repos/:repo/webhook` | Webhook GitHub **ou** GitLab (push/issues/PR) : signature `X-Hub-Signature-256` ou token `X-Gitlab-Token` vérifié selon le fournisseur détecté, mémoire ré-indexée, contexte régénéré sur push |
 | `GET /v1/app/manifest` | Manifest GitHub App (création en un clic) |
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) : provisionne/déprovisionne un tenant automatiquement |
 | `GET /v1/app/installed?installation_id=…` | Redirection post-install : remet la clé API du tenant auto-provisionné (une seule fois) |
@@ -157,7 +160,11 @@ claude mcp add mindset-ctx -- node /chemin/dist/cli.js mcp /chemin/repo/prive
 ```
 
 Pour la mémoire des PRs/issues d'un repo privé, `ctx index --github` utilise ton
-`GITHUB_TOKEN` personnel (scope `repo`).
+`GITHUB_TOKEN` personnel (scope `repo`) ; `ctx index --gitlab` fait pareil côté
+GitLab avec `GITLAB_TOKEN`. Le webhook temps réel (`POST /v1/repos/:repo/webhook`)
+détecte lui-même le fournisseur : signature `X-Hub-Signature-256` pour GitHub,
+token partagé `X-Gitlab-Token` pour GitLab — même endpoint, même secret configuré
+côté `--webhook-secret` / `CTX_WEBHOOK_SECRET`.
 
 En **mode hébergé**, installer la GitHub App (`ctx app manifest`) provisionne
 automatiquement un tenant scopé aux repos accordés — pas besoin de compte
@@ -206,7 +213,8 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.9 — **hébergé sur Cloudflare Workers** (`src/worker/`, `wrangler.toml`) : gratuit (100k req/j), edge, sans carte bancaire, état multi-tenant dans KV. `.github/workflows/deploy-cloudflare.yml` déploie sur chaque push vers `main`.
 - [x] v0.9 — **`ctx stripe webhook <url>`** crée (ou réutilise, idempotent) le webhook Stripe par API — plus besoin d'accéder au Dashboard Stripe à la main.
 - [x] v0.10 — **provisioning automatique par install GitHub App** (`/v1/app/webhook` crée/retire le tenant, `/v1/app/installed` remet la clé) + **`ctx app token <installation-id>`** mint un token d'installation (JWT App signé RS256 → échange) pour lire les repos privés accordés.
-- [ ] Support GitLab / Bitbucket ; SSO / RBAC (Team/Enterprise)
+- [x] v0.10 — **support GitLab** : `ctx index --gitlab` (issues + merge requests via l'API v4) et webhook temps réel (`X-Gitlab-Token`, détection automatique du fournisseur sur le même endpoint que GitHub)
+- [ ] Support Bitbucket ; SSO / RBAC (Team/Enterprise) ; déploiement dédié/VPC pour Enterprise
 
 ## Déploiement en production (0 → premier euro)
 

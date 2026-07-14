@@ -86,6 +86,48 @@ test("GitHub webhook verifies HMAC and refreshes memory + context", async () => 
   }
 });
 
+test("GitLab webhook verifies the shared token and refreshes memory + context", async () => {
+  const repo = makeRepo("hooked-gl");
+  rmSync(join(repo, ".context"), { recursive: true, force: true });
+  const secret = "wh-secret-gl";
+  const server = createContextServer({ "hooked-gl": repo }, { webhookSecret: secret });
+  const base = await listen(server);
+  const payload = JSON.stringify({ object_kind: "push", ref: "refs/heads/main" });
+
+  try {
+    // Wrong token → 401, nothing happens.
+    const bad = await fetch(`${base}/v1/repos/hooked-gl/webhook`, {
+      method: "POST",
+      headers: { "x-gitlab-event": "Push Hook", "x-gitlab-token": "wrong-token" },
+      body: payload,
+    });
+    assert.equal(bad.status, 401);
+    assert.ok(!existsSync(join(repo, "CLAUDE.md")));
+
+    // Valid push → memory re-indexed and context regenerated, same as GitHub.
+    const ok = await fetch(`${base}/v1/repos/hooked-gl/webhook`, {
+      method: "POST",
+      headers: { "x-gitlab-event": "Push Hook", "x-gitlab-token": secret },
+      body: payload,
+    });
+    assert.equal(ok.status, 200);
+    const result = await ok.json() as { ok: boolean; event: string; memoryRecords: number; regenerated: string[] };
+    assert.equal(result.event, "push", "GitLab's 'Push Hook' is normalized to 'push'");
+    assert.ok(result.regenerated.includes("CLAUDE.md"));
+    assert.ok(existsSync(join(repo, "CLAUDE.md")));
+
+    // Unmapped GitLab event → acknowledged but ignored, not mistaken for GitHub.
+    const note = await fetch(`${base}/v1/repos/hooked-gl/webhook`, {
+      method: "POST",
+      headers: { "x-gitlab-event": "Note Hook", "x-gitlab-token": secret },
+      body: payload,
+    });
+    assert.equal((await note.json() as { action: string }).action, "ignored");
+  } finally {
+    server.close();
+  }
+});
+
 test("tenants: scoped keys, quotas and usage metering", async () => {
   const alphaRepo = makeRepo("alpha");
   const betaRepo = makeRepo("beta");

@@ -5,6 +5,7 @@ import { analyzeRepo } from "./analyzer.js";
 import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, writeMemory, mergeRecords, MEMORY_PATH } from "./memory.js";
 import { fetchGitHubMemory, parseRepoFromRemote } from "./github.js";
+import { fetchGitLabMemory, parseGitLabRepoFromRemote } from "./gitlab.js";
 import { createContextServer } from "./server.js";
 import { generateNarrative, hasApiKey } from "./ai.js";
 import { runMcpServer } from "./mcp.js";
@@ -16,7 +17,7 @@ import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, getInstallationToken, installUrlHint } from "./githubapp.js";
 import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.10.0";
+const VERSION = "0.11.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -27,14 +28,16 @@ Usage:
                                With --ai (requires ANTHROPIC_API_KEY), Claude
                                writes a narrative overview into CLAUDE.md and
                                the architecture doc
-  ctx index [path] [--limit N] [--github] [--repo owner/name] [--embed]
+  ctx index [path] [--limit N] [--github|--gitlab] [--repo owner/name] [--embed]
                                Index git history into the memory layer
                                (${MEMORY_PATH}). With --github, also ingest
-                               PRs, issues and discussions via the GitHub API
-                               (owner/name inferred from the origin remote
-                               unless --repo is given; set GITHUB_TOKEN for
-                               private repos / higher rate limits). With
-                               --embed (requires VOYAGE_API_KEY), also compute
+                               PRs, issues and discussions via the GitHub API;
+                               with --gitlab, ingest issues and merge requests
+                               via the GitLab API instead (owner/name inferred
+                               from the origin remote unless --repo is given;
+                               set GITHUB_TOKEN / GITLAB_TOKEN for private
+                               repos or higher rate limits). With --embed
+                               (requires VOYAGE_API_KEY), also compute
                                embeddings for semantic search
   ctx search <query> [--repo-path path] [--semantic|--hybrid] [--limit N]
                                Search the memory layer from the terminal.
@@ -89,7 +92,7 @@ Hand-written content below the "ctx:manual" marker in generated files is
 preserved across regenerations.`;
 
 /** Flags that take no value; every other --flag consumes the next token. */
-const BOOLEAN_FLAGS = new Set(["--github", "--ai", "--embed", "--semantic", "--hybrid"]);
+const BOOLEAN_FLAGS = new Set(["--github", "--gitlab", "--ai", "--embed", "--semantic", "--hybrid"]);
 
 function arg(flag: string, argv: string[]): string | undefined {
   const i = argv.indexOf(flag);
@@ -153,6 +156,20 @@ async function cmdIndex(root: string, argv: string[]): Promise<void> {
     const gh = await fetchGitHubMemory(target.owner, target.repo, { limit });
     console.log(`Fetched ${gh.length} PR/issue/discussion record(s) from ${target.owner}/${target.repo}`);
     records = mergeRecords(records, gh);
+  }
+
+  if (argv.includes("--gitlab")) {
+    const repoFlag = arg("--repo", argv);
+    const target = repoFlag
+      ? { owner: repoFlag.split("/")[0], repo: repoFlag.split("/")[1] }
+      : parseGitLabRepoFromRemote(analyzeRepo(root).remote);
+    if (!target?.owner || !target?.repo) {
+      console.error("Cannot determine GitLab repo: no origin remote found — pass --repo owner/name.");
+      process.exit(1);
+    }
+    const gl = await fetchGitLabMemory(target.owner, target.repo, { limit });
+    console.log(`Fetched ${gl.length} issue/merge-request record(s) from ${target.owner}/${target.repo}`);
+    records = mergeRecords(records, gl);
   }
 
   const path = writeMemory(root, records);
