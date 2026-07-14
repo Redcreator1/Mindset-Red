@@ -1,6 +1,6 @@
 # mindset-ctx — Note de vision
 
-> Enregistré le 12/07/2026 pour ne pas perdre le fil entre deux sessions. Version
+> Enregistré le 14/07/2026 pour ne pas perdre le fil entre deux sessions. Version
 > interactive (design, tableaux) : générée en artefact le même jour — ce fichier en
 > est la version texte de référence, celle qui vit dans le repo.
 
@@ -38,7 +38,7 @@ personne ; fournisseur de tout le monde.
 
 - **`mindset-ctx.dev`** disponible à 9,99 $/an au moment de l'écriture — déjà le nom
   utilisé dans le code (`buildAppManifest`). Achat prévu par l'utilisateur fin de
-  semaine (12–18 juillet 2026).
+  semaine (14–20 juillet 2026).
 - Structure cible : domaine racine = site vitrine + documentation (façon Stripe/Vercel) ;
   API reste sur son sous-domaine technique (le Worker Cloudflare actuel).
 - Alternatives vérifiées disponibles : `mindsetctx.com` (11,25 $), `getmindset.dev`
@@ -64,10 +64,25 @@ personne ; fournisseur de tout le monde.
 
 ## Décisions prises
 
-- **12/07/2026** — Domaine choisi : `mindset-ctx.dev`. Achat différé à la fin de la
+- **14/07/2026** — Domaine choisi : `mindset-ctx.dev`. Achat différé à la fin de la
   semaine (utilisateur), donc pas de travail de marque/branding tant que ce n'est pas
   acheté — focus code en attendant.
-- **12/07/2026** — Première brique de la Phase 2 attaquée : **support GitLab**
+- **14/07/2026** — Première brique de la Phase 2 attaquée : **support GitLab**
   (ingestion mémoire PRs/issues), par choix de l'agent (Auto Mode) — ferme un vrai trou
   de roadmap, ne dépend pas d'un client Enterprise déjà signé, suit un pattern déjà
   éprouvé (`github.ts`). SSO/RBAC et déploiement dédié restent à prioriser ensuite.
+- **14/07/2026** — Demande de construire simultanément SSO/RBAC, Bitbucket,
+  déploiement VPC Enterprise, extension VS Code/JetBrains, intégrations
+  Slack/Linear/Notion et programme de referral. Recadrage réaliste : ce n'est pas
+  une journée de travail, c'en est plusieurs semaines. Trois items sont bloqués sans
+  l'utilisateur (Slack/Linear/Notion nécessitent chacun la création d'une app
+  développeur sur leur plateforme respective ; le programme de referral nécessite une
+  décision business sur la structure de récompense). Livré à la place, dans le même
+  esprit "réel et testé" que le reste du projet : **support Bitbucket** (ingestion
+  mémoire, mêmes limites que GitLab côté webhook — pas de mécanisme de signature
+  Bitbucket vérifié, donc pas implémenté plutôt que deviné), **doc Cursor** (le
+  serveur MCP fonctionnait déjà avec Cursor, juste non documenté), et **déploiement
+  Enterprise dédié** (`Dockerfile` + `docs/DEPLOYMENT.md`, ce que `/pricing`
+  promettait sans l'avoir construit). SSO, extension IDE, intégrations tierces et
+  referral restent à planifier — chacun mérite sa propre session dédiée plutôt
+  qu'être bâclé ce soir.
