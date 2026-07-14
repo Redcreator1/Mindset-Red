@@ -187,3 +187,36 @@ personne ; fournisseur de tout le monde.
   l'utilisateur) et son Client ID/clé API à ajouter aux secrets GitHub
   (`WORKOS_CLIENT_ID`, `WORKOS_API_KEY`) pour que le déploiement les pousse
   vers Cloudflare comme les secrets Stripe.
+- **14/07/2026** — SSO WorkOS testée en conditions réelles par l'utilisateur
+  juste après le déploiement : un premier essai a buté sur `redirect_uri`
+  refusé par WorkOS (l'URL de callback n'était pas encore déclarée dans les
+  paramètres de l'application WorkOS — pas un bug côté code, une case à
+  cocher manquante côté dashboard), puis sur une demande de carte bancaire en
+  essayant de basculer en environnement Production (normal chez WorkOS,
+  gratuit tant qu'aucune connexion SSO active n'existe — pas nécessaire ici,
+  Staging suffit pour tester). Une fois l'URI de redirection ajoutée côté
+  Staging : connexion réelle réussie, tenant auto-provisionné avec l'email
+  comme nom, plan `free`, accès dashboard par cookie confirmé — validation
+  de bout en bout, pas juste sur la théorie des tests automatisés.
+- **14/07/2026** — Extension VS Code construite (`editors/vscode/`), demandée
+  juste après la validation de la SSO. Scope volontairement réduit à VS Code
+  seul pour cette session — JetBrains reporté explicitement : stack
+  totalement différente (Kotlin/Gradle vs TypeScript), mérite sa propre
+  session plutôt que d'être bâclée à la suite. Contrainte réelle découverte
+  en concevant l'extension : mindset-ctx n'est pas publié sur npm, donc pas
+  de `npx mindset-ctx` par défaut possible — la commande CLI à invoquer est
+  demandée une fois à l'utilisateur puis mémorisée dans les réglages
+  d'espace de travail (`mindsetCtx.cliCommand`). Palette de commandes
+  (générer le contexte, indexer la mémoire, copier la commande MCP `claude
+  mcp add`, ouvrir le dashboard hébergé) + indicateur de statut barre de
+  statut. Logique pure (construction de la commande MCP, texte de statut)
+  extraite dans des modules sans dépendance à `vscode`, testée par 6 tests
+  `node:test` classiques ; la partie qui appelle réellement l'API `vscode`
+  n'a **pas** de suite automatisée — honnêtement documenté plutôt que
+  simulé : `@vscode/test-electron` a besoin de télécharger un vrai binaire
+  VS Code et d'un serveur d'affichage (Xvfb), tous deux indisponibles dans ce
+  sandbox distant. Vérifié à la place : compilation TypeScript propre contre
+  `@types/vscode`, et `vsce package` produit un `.vsix` valide. Publication
+  sur le VS Code Marketplace non faite — nécessite un compte éditeur
+  Microsoft/Azure DevOps (gratuit), décision et création laissées à
+  l'utilisateur.
