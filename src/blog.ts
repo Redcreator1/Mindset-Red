@@ -134,7 +134,7 @@ ctx generate .</pre>
 ];
 
 /** List of posts, newest first. */
-export function renderBlogIndex(): string {
+export function renderBlogIndex(baseUrl?: string): string {
   const items = [...POSTS]
     .sort((a, b) => b.date.localeCompare(a.date))
     .map(
@@ -162,11 +162,17 @@ export function renderBlogIndex(): string {
   <h1>Blog</h1>
   ${items || "<p>Rien à afficher pour l'instant.</p>"}
 </main>`;
-  return shell("Blog — mindset-ctx", body);
+  return shell({
+    title: "Blog — mindset-ctx",
+    description: "Annonces et notes de mindset-ctx — l'infrastructure de contexte pour agents IA.",
+    body,
+    baseUrl,
+    path: "/blog",
+  });
 }
 
 /** A single post's page, or null if the slug doesn't match any post (caller renders 404). */
-export function renderBlogPost(slug: string): string | null {
+export function renderBlogPost(slug: string, baseUrl?: string): string | null {
   const post = POSTS.find((p) => p.slug === slug);
   if (!post) return null;
 
@@ -189,5 +195,11 @@ export function renderBlogPost(slug: string): string | null {
   <time>${esc(post.date)}</time>
   ${post.bodyHtml}
 </main>`;
-  return shell(`${post.title} — mindset-ctx`, body);
+  return shell({
+    title: `${post.title} — mindset-ctx`,
+    description: post.excerpt,
+    body,
+    baseUrl,
+    path: `/blog/${slug}`,
+  });
 }

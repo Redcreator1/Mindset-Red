@@ -47,6 +47,18 @@ test("Worker: / renders the vitrine, not the pricing page or a health JSON", asy
   assert.ok(body.startsWith("<!doctype html>"));
   assert.ok(!body.includes("Passer Pro"), "vitrine is not the price list");
   assert.match(body, /agent IA/);
+  // Open Graph / Twitter Card tags, built from CTX_BASE_URL (falls back to
+  // the request's own origin when unset, same as elsewhere in this Worker).
+  assert.match(body, /<meta property="og:image" content="https:\/\/ctx\.example\.com\/og-image\.png">/);
+});
+
+test("Worker: /og-image.png serves the OG preview image, self-hosted", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/og-image.png"), env);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "image/png");
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 });
 
 test("Worker: /docs renders the documentation index", async () => {

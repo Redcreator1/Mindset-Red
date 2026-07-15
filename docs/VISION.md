@@ -292,3 +292,25 @@ personne ; fournisseur de tout le monde.
   départ. Le lien X reste utile pour partager/retweeter, mais le contenu
   lui-même vit sur notre domaine, indexable, sans dépendance à un service
   tiers.
+- **15/07/2026** — Demande d'améliorer le site avant de reprendre le vrai
+  travail. Proposé 4 pistes (Open Graph/Twitter Card, favicon, page 404
+  stylée, robots.txt/sitemap) ; l'utilisateur a choisi uniquement les
+  balises Open Graph/Twitter Card — les trois autres restent à faire si
+  demandées plus tard. Construit : `ogMeta()` (home.ts, réutilisé par
+  pricing.ts) génère les balises `og:title`/`og:description`/`og:image`/
+  `og:url` + `twitter:card=summary_large_image` sur `/`, `/docs`,
+  `/pricing`, `/blog` et `/blog/:slug` ; `og:image`/`og:url` omis (pas
+  imprimés cassés) quand aucun `baseUrl` n'est configuré. Image de
+  prévisualisation (1200×630, même identité visuelle que le logo/les
+  visuels préparés pour X) servie par `GET /og-image.png`, encodée en
+  base64 dans `src/og-image.ts` — décodée en `ArrayBuffer` plutôt qu'en
+  `Uint8Array` à cause d'un vrai accroc TypeScript découvert en
+  construisant ça : les déclarations ambiantes `BodyInit`/`Response` de
+  `@types/node` et `@cloudflare/workers-types` ne se réconcilient pas
+  proprement sur `ArrayBufferView`, `ArrayBuffer` est la seule forme que
+  les deux acceptent sans ambiguïté. Signature de `shell()` (home.ts)
+  changée d'une paire de paramètres positionnels vers un objet d'options
+  pour porter `baseUrl`/`description`/`path` proprement. Parité Node +
+  Worker, 3 nouveaux tests (bytes PNG valides 1200×630, balises présentes/
+  absentes selon `baseUrl`, route `/og-image.png` sur les deux runtimes).
+  Version 0.21.0.

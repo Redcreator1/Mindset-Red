@@ -1,6 +1,7 @@
 import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js";
 import { renderHome, renderDocs } from "../home.js";
 import { renderBlogIndex, renderBlogPost } from "../blog.js";
+import { ogImageBytes } from "../og-image.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
@@ -89,11 +90,11 @@ export default {
     // Root domain is the vitrine (thesis, not price list) — the moment a real
     // domain points here, this is what a first-time visitor sees.
     if (path === "/") {
-      return html(200, renderHome());
+      return html(200, renderHome(baseUrl));
     }
 
     if (path === "/docs") {
-      return html(200, renderDocs());
+      return html(200, renderDocs(baseUrl));
     }
 
     if (path === "/pricing") {
@@ -101,13 +102,22 @@ export default {
       return html(200, renderPricing({ baseUrl, availablePlans }));
     }
 
+    // Open Graph / Twitter Card preview image — same bytes on both runtimes,
+    // embedded in og-image.ts rather than hosted separately (see there for why).
+    if (path === "/og-image.png") {
+      return new Response(ogImageBytes(), {
+        status: 200,
+        headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" },
+      });
+    }
+
     if (path === "/blog") {
-      return html(200, renderBlogIndex());
+      return html(200, renderBlogIndex(baseUrl));
     }
 
     const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) {
-      const rendered = renderBlogPost(blogMatch[1]);
+      const rendered = renderBlogPost(blogMatch[1], baseUrl);
       return rendered ? html(200, rendered) : json(404, { error: `no such post '${blogMatch[1]}'` });
     }
 

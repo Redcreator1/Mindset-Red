@@ -133,6 +133,15 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     const homeBody = await home.text();
     assert.ok(homeBody.startsWith("<!doctype html>"));
     assert.ok(!homeBody.includes("Passer Pro"));
+    // Open Graph / Twitter Card tags — a link to / shared on X/Slack shows a
+    // real preview instead of a bare URL, using the appBaseUrl passed above.
+    assert.match(homeBody, /<meta property="og:image" content="http:\/\/ctx\.local\/og-image\.png">/);
+    assert.match(homeBody, /<meta name="twitter:card" content="summary_large_image">/);
+
+    // The OG image itself is served, self-hosted — no third-party asset.
+    const ogImage = await fetch(`${base}/og-image.png`);
+    assert.equal(ogImage.status, 200);
+    assert.equal(ogImage.headers.get("content-type"), "image/png");
 
     // /v1/health still returns its own JSON, unaffected by the split.
     const health = await fetch(`${base}/v1/health`);
