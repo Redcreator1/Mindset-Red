@@ -24,12 +24,17 @@ import type { HybridResult } from "./hybrid.js";
  *
  * Honesty about what's verified in this repo: the blending logic below
  * (mlRerank) is unit-tested against a stubbed MlReranker, so its math is
- * real and checked. The @xenova/transformers pipeline wiring in
- * loadMlReranker() is written to that library's documented local-files API,
- * but could not be exercised end-to-end in the environment this was
- * written in (huggingface.co is unreachable there, so no model files were
- * ever available to load) — verify it yourself once you've run the Colab
- * notebook and pointed CTX_RANK_ML_MODEL_DIR at the exported directory.
+ * real and checked. The @xenova/transformers wiring in getMlReranker() calls
+ * AutoTokenizer + AutoModelForSequenceClassification directly (not the
+ * high-level `pipeline()` helper, whose text-classification pipeline only
+ * types a bare string/string[], not a query/passage pair) — that call shape
+ * was checked against the library's actual shipped .d.ts files (pulled via
+ * `npm pack`, since a full `npm install` of this package failed in the
+ * environment this was written in — see below). It still could not be
+ * exercised end-to-end there: huggingface.co is unreachable from that
+ * sandbox, so no real model files were ever available to load. Verify it
+ * yourself once you've run the Colab notebook and pointed
+ * CTX_RANK_ML_MODEL_DIR at the exported directory.
  */
 
 export interface MlReranker {
@@ -55,24 +60,31 @@ export async function getMlReranker(modelDir: string | undefined): Promise<MlRer
     // sharp binaries, so its types aren't always resolvable. Falling back to
     // Rank v0 in the catch below is the point of that optionality.
     // @ts-ignore
-    const { pipeline, env } = await import("@xenova/transformers");
+    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import("@xenova/transformers");
     // Local files only — never fetch from the HuggingFace hub at request
     // time. See the module doc comment for why this matters here.
     env.allowRemoteModels = false;
     env.localModelPath = dirname(modelDir);
-    const classify = await pipeline("text-classification", basename(modelDir));
+    const modelName = basename(modelDir);
+    const tokenizer = await AutoTokenizer.from_pretrained(modelName);
+    const model = await AutoModelForSequenceClassification.from_pretrained(modelName);
 
+    // No high-level `pipeline("text-classification")` here — its typed
+    // signature only accepts a bare string or string[], not a (query,
+    // passage) pair. Cross-encoder pair scoring needs the tokenizer's own
+    // `text_pair` option instead, feeding straight into the model. Verified
+    // against @xenova/transformers 2.17.2's shipped .d.ts files (fetched via
+    // `npm pack`, since neither `npm install` for this package nor
+    // huggingface.co were reachable to test any of this end-to-end where
+    // this was written — see the module doc comment).
     const reranker: MlReranker = {
       async score(query, passage) {
-        // MS MARCO cross-encoders are trained on (query, passage) pairs
-        // classified as relevant/irrelevant; the "relevant" logit is the
-        // score we want. Exact output shape depends on the exported model's
-        // config — verify against notebooks/train_rank_ml.py's export step.
-        const out = (await classify({ text: query, text_pair: passage })) as
-          | { label: string; score: number }
-          | { label: string; score: number }[];
-        const result = Array.isArray(out) ? out[0] : out;
-        return result?.score ?? 0;
+        const inputs = await tokenizer(query, { text_pair: passage, truncation: true });
+        const { logits } = await model(inputs);
+        // MS MARCO cross-encoders use num_labels=1 (a regression-style
+        // relevance score, not a softmax over classes) — the single logit
+        // *is* the score, no argmax/softmax needed.
+        return Number(logits.data[0]) || 0;
       },
     };
     cached = { modelDir, reranker };
