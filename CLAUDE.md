@@ -8,7 +8,7 @@
 
 Context-as-a-Service: generate and maintain AI-ready context (CLAUDE.md, AGENTS.md, architecture docs, prompt templates) for any GitHub or GitLab repo, with a memory layer over its history.
 
-**Stack:** TypeScript (48 files), Markdown (10 files), YAML (7 files), JSON (6 files), TOML (1 file) · TypeScript
+**Stack:** TypeScript (50 files), Markdown (10 files), YAML (7 files), JSON (6 files), TOML (1 file) · TypeScript
 
 ## Repository layout
 

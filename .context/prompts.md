@@ -7,7 +7,7 @@ Reusable prompt templates for dev agents. Interpolate `{{placeholders}}` before 
 ## Implement a feature
 
 ```text
-You are working in the mindset-ctx repository (TypeScript (48 files), Markdown (10 files), YAML (7 files), JSON (6 files), TOML (1 file)).
+You are working in the mindset-ctx repository (TypeScript (50 files), Markdown (10 files), YAML (7 files), JSON (6 files), TOML (1 file)).
 Read CLAUDE.md and AGENTS.md first.
 Task: {{feature_description}}
 Constraints: keep the diff minimal, add tests, run npm test, follow existing code style.
