@@ -24,8 +24,8 @@ import type { HybridResult } from "./hybrid.js";
  *
  * Honesty about what's verified in this repo: the blending logic below
  * (mlRerank) is unit-tested against a stubbed MlReranker, so its math is
- * real and checked. The @xenova/transformers wiring in getMlReranker() calls
- * AutoTokenizer + AutoModelForSequenceClassification directly (not the
+ * real and checked. The @huggingface/transformers wiring in getMlReranker()
+ * calls AutoTokenizer + AutoModelForSequenceClassification directly (not the
  * high-level `pipeline()` helper, whose text-classification pipeline only
  * types a bare string/string[], not a query/passage pair) — that call shape
  * was checked against the library's actual shipped .d.ts files (pulled via
@@ -35,6 +35,16 @@ import type { HybridResult } from "./hybrid.js";
  * sandbox, so no real model files were ever available to load. Verify it
  * yourself once you've run the Colab notebook and pointed
  * CTX_RANK_ML_MODEL_DIR at the exported directory.
+ *
+ * Package note: this originally used @xenova/transformers, that project's
+ * old name before it was adopted into the huggingface GitHub org and
+ * republished as @huggingface/transformers (the actively maintained
+ * package; @xenova/transformers is now the abandoned legacy name — its own
+ * scripts/convert.py conversion tool referenced in an earlier draft of
+ * notebooks/train_rank_ml.py no longer exists upstream, discovered when a
+ * real run of that notebook hit a real "no such file" error). Switched
+ * before merge rather than ship code against a package that's already been
+ * superseded.
  */
 
 export interface MlReranker {
@@ -55,12 +65,13 @@ export async function getMlReranker(modelDir: string | undefined): Promise<MlRer
   if (cached?.modelDir === modelDir) return cached.reranker;
 
   try {
-    // @xenova/transformers is an optionalDependency (package.json) — its
-    // install can fail on platforms that can't fetch its native onnxruntime/
-    // sharp binaries, so its types aren't always resolvable. Falling back to
-    // Rank v0 in the catch below is the point of that optionality.
+    // @huggingface/transformers is an optionalDependency (package.json) —
+    // its install can fail on platforms that can't fetch its native
+    // onnxruntime/sharp binaries, so its types aren't always resolvable.
+    // Falling back to Rank v0 in the catch below is the point of that
+    // optionality.
     // @ts-ignore
-    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import("@xenova/transformers");
+    const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import("@huggingface/transformers");
     // Local files only — never fetch from the HuggingFace hub at request
     // time. See the module doc comment for why this matters here.
     env.allowRemoteModels = false;
@@ -73,8 +84,8 @@ export async function getMlReranker(modelDir: string | undefined): Promise<MlRer
     // signature only accepts a bare string or string[], not a (query,
     // passage) pair. Cross-encoder pair scoring needs the tokenizer's own
     // `text_pair` option instead, feeding straight into the model. Verified
-    // against @xenova/transformers 2.17.2's shipped .d.ts files (fetched via
-    // `npm pack`, since neither `npm install` for this package nor
+    // against @huggingface/transformers 4.2.0's shipped .d.ts files (fetched
+    // via `npm pack`, since neither `npm install` for this package nor
     // huggingface.co were reachable to test any of this end-to-end where
     // this was written — see the module doc comment).
     const reranker: MlReranker = {

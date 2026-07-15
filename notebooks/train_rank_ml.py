@@ -22,13 +22,19 @@
 # transformers.js APIs but could NOT be executed end-to-end where it was
 # written: that sandbox blocks network access to huggingface.co entirely
 # (confirmed via curl — same restriction category as several other blocked
-# hosts there). Run it here in Colab, which has full internet access, and
-# treat the exact `convert.py` invocation in the last cell as something to
-# double check against https://github.com/xenova/transformers.js's current
-# README, since that tool's CLI flags can drift between versions.
+# hosts there). Run it here in Colab, which has full internet access.
+#
+# Correction history: an earlier version of cell [5] cloned
+# github.com/xenova/transformers.js and ran its scripts/convert.py — that
+# tool no longer exists. The project moved to the huggingface GitHub org
+# and dropped its bespoke conversion script in favor of the standard
+# `optimum-onnx` exporter; the npm package moved from @xenova/transformers
+# to @huggingface/transformers too. Found by actually running this notebook
+# and hitting a real "no such file" error, then re-verified against that
+# project's current README before rewriting cell [5] below.
 
 # %% [1] Install dependencies (Colab has torch preinstalled; this adds the rest)
-# !pip install -q sentence-transformers optimum[exporters]
+# !pip install -q sentence-transformers
 
 # %% [2] Upload your repo's memory export
 # Locally, in your mindset-ctx checkout, run:
@@ -85,20 +91,23 @@ model.fit(
 )
 print("Saved fine-tuned model to ./fine_tuned_model")
 
-# %% [5] Export to the transformers.js-compatible ONNX layout
-# transformers.js ships an official conversion tool for exactly this — it
-# writes the onnx/ subfolder layout that `@xenova/transformers`'s
-# `pipeline(..., { local_files_only: true })` expects. Verify the exact
-# invocation against that repo's current README (this couldn't be checked
-# live from the sandbox this script was authored in):
+# %% [5] Export to the ONNX layout src/rank-ml.ts expects
+# `optimum-onnx` is HuggingFace's current, actively maintained ONNX exporter
+# (verified against https://github.com/huggingface/optimum-onnx's README —
+# the old xenova/transformers.js scripts/convert.py tool referenced in an
+# earlier version of this cell no longer exists upstream). Its plain output
+# directory doesn't nest the .onnx file under an onnx/ subfolder the way
+# @huggingface/transformers' default `subfolder: "onnx"` option expects when
+# loading a local model, so the mkdir/mv below puts it where rank-ml.ts's
+# getMlReranker() will actually look.
 #
-#   git clone --depth 1 https://github.com/xenova/transformers.js
-#   cd transformers.js && pip install -q -r scripts/requirements.txt
-#   python -m scripts.convert --quantize --model_id ../fine_tuned_model \
-#       --task text-classification -o ../rank_ml_model
+#   !pip install -q "optimum-onnx[onnxruntime]"
+#   !optimum-cli export onnx --model fine_tuned_model --task text-classification rank_ml_model
+#   !mkdir -p rank_ml_model/onnx
+#   !mv rank_ml_model/model.onnx rank_ml_model/onnx/model.onnx
 #
-# Result: a ./rank_ml_model directory containing config.json, tokenizer files,
-# and onnx/model_quantized.onnx. Download it (zip it first — Colab's file
+# Result: a ./rank_ml_model directory containing config.json, tokenizer
+# files, and onnx/model.onnx. Download it (zip it first — Colab's file
 # browser only downloads single files):
 #
 #   !zip -r rank_ml_model.zip rank_ml_model

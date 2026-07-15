@@ -407,6 +407,42 @@ personne ; fournisseur de tout le monde.
   lui-même exporté, jamais une entrée réseau non fiable.
   6 nouveaux tests (`rank-ml.test.ts`) + suite existante (117 tests)
   toujours verte — 123 au total. Version 0.24.0.
+- **15/07/2026** — L'utilisateur a réellement exécuté `notebooks/train_rank_ml.py`
+  dans Colab (cellules 1 à 4 : installation, upload de `memory.jsonl` généré
+  ici même via `ctx index .`, construction des 128 paires, fine-tuning —
+  toutes passées sans erreur). La cellule 5 (export) a échoué en vrai :
+  `git clone .../xenova/transformers.js` réussissait, mais
+  `scripts/requirements.txt` et `scripts/convert.py` n'existaient plus
+  ("No such file or directory", "No module named scripts.convert").
+  Exactement la limite que j'avais signalée honnêtement dans le README du
+  notebook ("à vérifier, non exécuté ici faute d'accès réseau à
+  huggingface.co") — confirmée fausse par une exécution réelle plutôt que
+  découverte par moi-même en amont.
+  Diagnostiqué en lisant le vrai état actuel du projet (raw.githubusercontent.com
+  est accessible depuis ce sandbox, contrairement à huggingface.co et à
+  l'API GitHub pour des repos hors-scope) : le projet a été adopté par
+  l'organisation GitHub `huggingface`, republié en npm sous
+  `@huggingface/transformers` (v4.2.0) au lieu de l'ancien
+  `@xenova/transformers` (legacy, abandonné), et son outil de conversion
+  maison `scripts/convert.py` a été remplacé par l'exporteur ONNX standard
+  `optimum-onnx` (`pip install "optimum-onnx[onnxruntime]"` puis
+  `optimum-cli export onnx --task text-classification`).
+  Corrigé avant merge : `src/rank-ml.ts` et `package.json` pointent
+  maintenant vers `@huggingface/transformers` — la forme d'appel
+  (`AutoTokenizer`/`AutoModelForSequenceClassification` avec l'option
+  `text_pair` du tokenizer, pas le helper `pipeline()`) reste identique,
+  reconfirmée contre les vrais `.d.ts` de la 4.2.0 via `npm pack` exactement
+  comme pour le fix CI précédent. Le notebook exporte maintenant vers
+  `rank_ml_model/onnx/model.onnx` (sous-dossier `onnx/` recréé à la main
+  après l'export `optimum-cli`, pour correspondre à la convention
+  `subfolder: "onnx"` que `@huggingface/transformers` attend par défaut).
+  Aucun changement de test nécessaire (la correction ne touche que le
+  chemin non exercé par les tests, par construction). Toujours 123/123.
+  Bonus découvert en relançant `npm install` : `@huggingface/transformers`
+  s'installe entièrement ici (contrairement à `@xenova/transformers`, dont
+  le `sharp` transitif échouait sur le proxy) et `npm audit` passe de 4
+  vulnérabilités (1 critique) à 0 — la vulnérabilité `protobufjs` documentée
+  dans l'entrée précédente disparaît avec le changement de paquet.
 - **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
   **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
   déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).
