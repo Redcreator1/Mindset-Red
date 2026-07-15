@@ -7,6 +7,7 @@ import { generateAll, mergePreservingManual } from "./generators.js";
 import { indexCommits, loadMemory, mergeRecords, searchMemory, writeMemory } from "./memory.js";
 import { semanticSearch } from "./embeddings.js";
 import { hybridSearch } from "./hybrid.js";
+import { getMlReranker, mlRerank } from "./rank-ml.js";
 import { TenantStore, UsageMeter, tenantCanManageBilling, tenantMayAccess, type Organization, type Tenant } from "./tenants.js";
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
@@ -88,6 +89,12 @@ export interface ServerOptions {
   workosApiKey?: string;
   /** Override WorkOS API base (for tests). Default: https://api.workos.com */
   workosBaseURL?: string;
+  /**
+   * Local directory holding a Rank ML cross-encoder exported by
+   * notebooks/train_rank_ml.py (ONNX + tokenizer files). Node-only — see
+   * rank-ml.ts for why. Unset or missing directory: falls back to Rank v0.
+   */
+  rankMlModelDir?: string;
 }
 
 export const CONTEXT_FILES: Record<string, string> = {
@@ -200,7 +207,7 @@ function toRepoMap(rootOrRepos: string | Record<string, string>): Record<string,
   return rootOrRepos;
 }
 
-async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerResponse): Promise<void> {
+async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerResponse, mlModelDir?: string): Promise<void> {
   if (sub === "analysis") {
     sendJson(res, 200, analyzeRepo(root));
     return;
@@ -232,7 +239,19 @@ async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerR
         const results = await semanticSearch(root, records, q, limit);
         sendJson(res, 200, { query: q, mode, total: records.length, results });
       } else if (mode === "hybrid") {
-        const results = await hybridSearch(root, records, q, limit);
+        let results = await hybridSearch(root, records, q, limit);
+        // Rank ML (Node-only, see rank-ml.ts): re-blends the top results with
+        // a real cross-encoder if one has been trained and pointed at via
+        // CTX_RANK_ML_MODEL_DIR. Falls back to plain Rank v0 (the
+        // hybridSearch result above) on any load or inference failure.
+        const reranker = await getMlReranker(mlModelDir);
+        if (reranker) {
+          try {
+            results = await mlRerank(results, q, reranker);
+          } catch (err) {
+            console.error("rank-ml: rerank failed — serving Rank v0 order:", err instanceof Error ? err.message : err);
+          }
+        }
         sendJson(res, 200, { query: q, mode, total: records.length, results });
       } else {
         sendJson(res, 200, { query: q, mode: "lexical", total: records.length, results: searchMemory(records, q, limit) });
@@ -904,7 +923,7 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         sendJson(res, 403, { error: `tenant '${tenant.name}' has no access to repo '${repoName}'` });
         return;
       }
-      await handleRepoRoute(root, repoMatch[2], url, res);
+      await handleRepoRoute(root, repoMatch[2], url, res, opts.rankMlModelDir);
       return;
     }
 
@@ -914,7 +933,7 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         sendJson(res, 403, { error: `tenant '${tenant.name}' has no access to repo '${soleName}'` });
         return;
       }
-      await handleRepoRoute(repos[soleName], path.slice("/v1/".length), url, res);
+      await handleRepoRoute(repos[soleName], path.slice("/v1/".length), url, res, opts.rankMlModelDir);
       return;
     }
 

@@ -362,6 +362,51 @@ personne ; fournisseur de tout le monde.
   fraîcheur, bonus double-moteur, date invalide non bloquante, tri complet
   sans perte ni doublon) + suite existante (112 tests) toujours verte —
   117 au total. Version 0.23.0.
+- **15/07/2026** — Suite immédiate : l'utilisateur propose d'aller plus loin
+  que Rank v0 — entraîner un vrai modèle sur un T4 Colab gratuit (donc sans
+  carte bancaire, compatible avec la contrainte du jour), et le brancher en
+  prod. Corrigé une intuition erronée en passant : aucune restriction ne
+  m'empêche d'écrire du vrai code d'entraînement/fine-tuning pour un
+  utilisateur — les limites rencontrées sont d'infrastructure (pas de GPU
+  ni d'accès à Colab depuis ce sandbox), pas une politique contre les
+  "vrais modèles". Vérifié par `curl` : huggingface.co est bloqué par le
+  proxy du sandbox (403 CONNECT tunnel failed) — même catégorie de blocage
+  que JetBrains plus tôt cette session. Question posée à l'utilisateur sur
+  comment gérer le déploiement, puisque Cloudflare Workers (notre prod) n'a
+  pas de GPU et ne peut pas exécuter d'inférence neuronale sans passer par
+  un service payant (Workers AI ou hébergement externe) — ce qui aurait
+  reproduit la contrainte carte-bancaire plus loin dans le pipeline.
+  **Réponse : "Runtime Node uniquement"** — le modèle entraîné tourne
+  seulement sur `server.ts` (self-hosted, gratuit), le Worker Cloudflare
+  garde Rank v0 heuristique. Écart de parité assumé et documenté, pas
+  masqué.
+  Livré `src/rank-ml.ts` : charge un cross-encoder MS MARCO fine-tuné
+  **depuis un dossier local** (`CTX_RANK_ML_MODEL_DIR`), zéro appel réseau
+  au runtime — évite complètement le blocage HuggingFace puisque
+  l'inférence ne dépend que de fichiers déjà sur disque, exportés par
+  l'utilisateur lui-même via `notebooks/train_rank_ml.py` (à exécuter dans
+  Colab, qui a un accès réseau complet, pas ici). Repli automatique vers
+  Rank v0 si le dossier est absent ou le chargement échoue — jamais de
+  crash serveur. `@xenova/transformers` ajouté en `optionalDependencies`
+  (pas `dependencies`) après avoir découvert que son installation échoue
+  ici aussi : elle dépend de `sharp`, dont le binaire natif se télécharge
+  depuis GitHub Releases — bloqué par le même proxy (403). En
+  `optionalDependencies`, `npm install` se termine proprement (le paquet
+  est silencieusement ignoré) au lieu d'échouer entièrement.
+  Honnêteté sur la limite de ce qui a pu être vérifié : `mlRerank` (le
+  blend de score) est testé unitairement (6 tests, reranker simulé,
+  déterministe) — sa logique est réelle et vérifiée. Le câblage du pipeline
+  `@xenova/transformers` dans `getMlReranker` est écrit contre l'API
+  documentée de cette librairie mais n'a jamais pu tourner de bout en bout
+  ici : aucun poids de modèle n'a jamais été disponible à charger. À
+  vérifier par l'utilisateur après avoir exécuté le notebook.
+  `npm audit` signale une vulnérabilité critique (`protobufjs`, via la
+  chaîne `onnxruntime-web` d'`@xenova/transformers`, non corrigée dans
+  aucune version 2.x publiée) — documentée et acceptée plutôt que cachée :
+  le seul contenu jamais désérialisé est un modèle que l'opérateur a
+  lui-même exporté, jamais une entrée réseau non fiable.
+  6 nouveaux tests (`rank-ml.test.ts`) + suite existante (117 tests)
+  toujours verte — 123 au total. Version 0.24.0.
 - **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
   **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
   déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).
