@@ -336,6 +336,32 @@ personne ; fournisseur de tout le monde.
   auth-d'abord/JSON existant, inchangé. 11 nouveaux tests (favicon,
   robots.txt, sitemap, 404 stylée, et surtout le test de non-régression
   401→404 sur les deux runtimes). Version 0.22.0.
+- **15/07/2026** — Demande explicite de passer sur "le lourd" après avoir
+  écarté Slack/Linear/Notion (jugés "petits trucs" par l'utilisateur, pas
+  bloqués sur l'argent mais reportés par choix). Confirmé via question :
+  "le lourd" = **Rank**, la Phase 4 ("Moat technique") de la vision. Attaqué
+  sous contrainte de temps réelle (limite de 5h Anthropic annoncée par
+  l'utilisateur, session à reprendre après).
+  Livré un **v0 honnête** plutôt qu'une promesse non tenue : `src/rank.ts`
+  est un reranker linéaire (pas un modèle entraîné) au-dessus de la fusion
+  RRF déjà en place — poids réglés à la main sur trois signaux (accord
+  lexical+sémantique, correspondance titre/requête, fraîcheur), documentés
+  comme point de départ explicitement destiné à être remplacé par des poids
+  **appris** une fois qu'il existe un vrai jeu de données de pertinence
+  (retours d'usage réels — clics, pouce haut/bas) et un budget
+  d'entraînement. Ni l'un ni l'autre ne peut se construire dans cette
+  session : la donnée de feedback n'existe pas encore (le produit vient
+  tout juste d'avoir des vrais visiteurs), et l'entraînement demande le
+  budget de "quelques milliers de $" déjà noté plus haut dans ce document
+  — précisément ce qu'on a mis de côté aujourd'hui ("on travaille pas avec
+  l'argent"). Branché directement dans `hybridSearch` (`hybrid.ts`) : la
+  fusion RRF tourne maintenant sur le pool complet de candidats plutôt que
+  d'être tronquée à `limit` avant reranking, pour que le reranker puisse
+  faire remonter un résultat que RRF seul aurait laissé juste sous la
+  coupure. 5 nouveaux tests unitaires sur `rank.ts` (correspondance titre,
+  fraîcheur, bonus double-moteur, date invalide non bloquante, tri complet
+  sans perte ni doublon) + suite existante (112 tests) toujours verte —
+  117 au total. Version 0.23.0.
 - **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
   **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
   déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).
