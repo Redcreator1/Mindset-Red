@@ -53,6 +53,7 @@ export function renderPricing(opts: { baseUrl: string; availablePlans: Set<PlanI
   return `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>mindset-ctx — Tarifs</title>
 ${ogMeta({
     title: "mindset-ctx — Tarifs",
@@ -108,7 +109,7 @@ export function renderSuccess(tenantKey: string, baseUrl = ""): string {
   // adaptable; with one (the Worker always passes it) it's runnable as-is.
   const apiBase = baseUrl.replace(/\/+$/, "");
   return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Bienvenue — mindset-ctx</title>
+<html lang="fr"><head><meta charset="utf-8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Bienvenue — mindset-ctx</title>
 <style>
   body { margin:0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
     background: #0b1220; color: #e2e8f0; padding: 48px 32px; }
@@ -142,7 +143,7 @@ export function renderAppInstalled(opts: { tenantKey: string; account: string; r
     ? "<li>Tous les repos actuels et futurs de ce compte</li>"
     : opts.repos.map((r) => `<li><code class="inline">${esc(r)}</code></li>`).join("");
   return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>Installation confirmée — mindset-ctx</title>
+<html lang="fr"><head><meta charset="utf-8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Installation confirmée — mindset-ctx</title>
 <style>
   body { margin:0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
     background: #0b1220; color: #e2e8f0; padding: 48px 32px; }
