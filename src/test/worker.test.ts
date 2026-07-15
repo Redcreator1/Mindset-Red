@@ -58,6 +58,20 @@ test("Worker: /docs renders the documentation index", async () => {
   assert.match(body, /github\.com\/Redcreator1\/Mindset-Red/);
 });
 
+test("Worker: /blog lists posts, /blog/:slug renders one, unknown slugs 404", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const index = await worker.fetch(new Request("https://ctx.example.com/blog"), env);
+  assert.equal(index.status, 200);
+  assert.match(await index.text(), /href="\/blog\/infrastructure-de-contexte-pour-agents-ia"/);
+
+  const post = await worker.fetch(new Request("https://ctx.example.com/blog/infrastructure-de-contexte-pour-agents-ia"), env);
+  assert.equal(post.status, 200);
+  assert.match(await post.text(), /mindset-ctx/);
+
+  const missing = await worker.fetch(new Request("https://ctx.example.com/blog/does-not-exist"), env);
+  assert.equal(missing.status, 404);
+});
+
 test("Worker: unauthenticated dashboard call → 401", async () => {
   const env = { CTX_KV: new MemKV() };
   const res = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard"), env);

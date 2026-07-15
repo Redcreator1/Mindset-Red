@@ -143,6 +143,15 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(docs.status, 200);
     assert.match(await docs.text(), /Documentation/);
 
+    // /blog lists posts; /blog/:slug renders one; unknown slugs 404.
+    const blogIndex = await fetch(`${base}/blog`);
+    assert.equal(blogIndex.status, 200);
+    assert.match(await blogIndex.text(), /href="\/blog\/infrastructure-de-contexte-pour-agents-ia"/);
+    const blogPost = await fetch(`${base}/blog/infrastructure-de-contexte-pour-agents-ia`);
+    assert.equal(blogPost.status, 200);
+    assert.match(await blogPost.text(), /mindset-ctx/);
+    assert.equal((await fetch(`${base}/blog/does-not-exist`)).status, 404);
+
     // /v1/signup mints a tenant, calls Stripe, redirects to Checkout.
     const signup = await fetch(`${base}/v1/signup?plan=pro`, { redirect: "manual" });
     assert.equal(signup.status, 302);
