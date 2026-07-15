@@ -16,6 +16,7 @@ import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs } from "./home.js";
 import { renderBlogIndex, renderBlogPost } from "./blog.js";
+import { ogImageBytes } from "./og-image.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "./workos.js";
 import {
   buildClearSessionCookieHeader, buildClearStateCookieHeader, buildSessionCookieHeader, buildStateCookieHeader,
@@ -273,13 +274,13 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     // above and this branch was dead code — fixed while adding /docs.
     if (path === "/") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(renderHome());
+      res.end(renderHome(opts.appBaseUrl));
       return;
     }
 
     if (path === "/docs") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(renderDocs());
+      res.end(renderDocs(opts.appBaseUrl));
       return;
     }
 
@@ -290,15 +291,23 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Open Graph / Twitter Card preview image — same bytes on both runtimes,
+    // embedded in og-image.ts rather than hosted separately (see there for why).
+    if (path === "/og-image.png") {
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=86400" });
+      res.end(Buffer.from(ogImageBytes()));
+      return;
+    }
+
     if (path === "/blog") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(renderBlogIndex());
+      res.end(renderBlogIndex(opts.appBaseUrl));
       return;
     }
 
     const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) {
-      const rendered = renderBlogPost(blogMatch[1]);
+      const rendered = renderBlogPost(blogMatch[1], opts.appBaseUrl);
       if (!rendered) {
         sendJson(res, 404, { error: `no such post '${blogMatch[1]}'` });
         return;

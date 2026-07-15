@@ -1,4 +1,5 @@
 import { PLANS, type PlanId } from "./billing.js";
+import { ogMeta } from "./home.js";
 
 /**
  * Public pricing page and self-service signup — the "front door" that lets
@@ -53,6 +54,12 @@ export function renderPricing(opts: { baseUrl: string; availablePlans: Set<PlanI
 <html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>mindset-ctx — Tarifs</title>
+${ogMeta({
+    title: "mindset-ctx — Tarifs",
+    description: "Free, Pro, Team, Enterprise — le contexte pour vos agents IA, self-hosted gratuit ou hébergé avec dashboard et quotas.",
+    baseUrl: opts.baseUrl,
+    path: "/pricing",
+  })}
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }

@@ -29,11 +29,36 @@ const BASE_STYLE = `
   footer a { color: #64748b; }
 `;
 
-export function shell(title: string, body: string): string {
+/**
+ * Open Graph / Twitter Card tags — shared by every page so a link shared on
+ * X/Slack/Discord shows a real preview (title, description, image) instead
+ * of a bare URL. `baseUrl` is optional (self-hosted callers may not pass
+ * one): without it, og:url/og:image are skipped rather than emitted as
+ * broken relative URLs, which platforms require absolute anyway.
+ */
+export function ogMeta(opts: { title: string; description: string; baseUrl?: string; path?: string }): string {
+  const base = opts.baseUrl?.replace(/\/+$/, "");
+  const url = base ? `${base}${opts.path ?? ""}` : undefined;
+  const image = base ? `${base}/og-image.png` : undefined;
+  return `
+<meta name="description" content="${esc(opts.description)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(opts.title)}">
+<meta property="og:description" content="${esc(opts.description)}">
+${url ? `<meta property="og:url" content="${esc(url)}">` : ""}
+${image ? `<meta property="og:image" content="${esc(image)}">` : ""}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${esc(opts.title)}">
+<meta name="twitter:description" content="${esc(opts.description)}">
+${image ? `<meta name="twitter:image" content="${esc(image)}">` : ""}`;
+}
+
+export function shell(opts: { title: string; description: string; body: string; baseUrl?: string; path?: string }): string {
   return `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)}</title>
+<title>${esc(opts.title)}</title>
+${ogMeta(opts)}
 <style>${BASE_STYLE}</style>
 </head>
 <body>
@@ -46,7 +71,7 @@ export function shell(title: string, body: string): string {
     <a href="${REPO_URL}">GitHub</a>
   </nav>
 </header>
-${body}
+${opts.body}
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
   <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a>
@@ -55,7 +80,7 @@ ${body}
 }
 
 /** The root domain landing page — the thesis, not the price list. */
-export function renderHome(): string {
+export function renderHome(baseUrl?: string): string {
   const body = `
 <style>
   main.hero { max-width: 780px; margin: 0 auto; padding: 48px 32px 32px; text-align: center; }
@@ -132,7 +157,13 @@ npx mindset-ctx index       # indexe git, PRs et issues dans la mémoire
 npx mindset-ctx mcp .       # expose tout ça à Claude Code / Cursor via MCP</pre>
 </section>
 `;
-  return shell("mindset-ctx — l'infrastructure de contexte pour vos agents IA", body);
+  return shell({
+    title: "mindset-ctx — l'infrastructure de contexte pour vos agents IA",
+    description: "Génère et maintient CLAUDE.md, AGENTS.md et la mémoire de votre projet, à jour à chaque push — pour Claude Code, Cursor et tout agent MCP.",
+    body,
+    baseUrl,
+    path: "/",
+  });
 }
 
 interface DocSection {
@@ -183,7 +214,7 @@ const DOC_SECTIONS: DocSection[] = [
 ];
 
 /** Documentation index — links out to the (public) repo's README/docs rather than duplicating content. */
-export function renderDocs(): string {
+export function renderDocs(baseUrl?: string): string {
   const sections = DOC_SECTIONS.map(
     (s) => `
     <div class="doc-card">
@@ -213,5 +244,11 @@ export function renderDocs(): string {
   voulez vérifier exactement ce qui se passe.</p>
   <div class="doc-grid">${sections}</div>
 </main>`;
-  return shell("Documentation — mindset-ctx", body);
+  return shell({
+    title: "Documentation — mindset-ctx",
+    description: "Installation, génération de contexte, mémoire du projet, intégrations Claude Code/Cursor, hébergement — toute la doc de mindset-ctx.",
+    body,
+    baseUrl,
+    path: "/docs",
+  });
 }
