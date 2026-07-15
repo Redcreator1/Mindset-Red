@@ -133,6 +133,11 @@ ctx generate .</pre>
   },
 ];
 
+/** Every post's slug — used by sitemap.xml to list them without duplicating the post data. */
+export function blogSlugs(): string[] {
+  return POSTS.map((p) => p.slug);
+}
+
 /** List of posts, newest first. */
 export function renderBlogIndex(baseUrl?: string): string {
   const items = [...POSTS]

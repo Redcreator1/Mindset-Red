@@ -1,7 +1,9 @@
 import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js";
-import { renderHome, renderDocs } from "../home.js";
+import { renderHome, renderDocs, render404 } from "../home.js";
 import { renderBlogIndex, renderBlogPost } from "../blog.js";
 import { ogImageBytes } from "../og-image.js";
+import { FAVICON_SVG } from "../favicon.js";
+import { renderRobotsTxt, renderSitemapXml } from "../seo.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
@@ -111,6 +113,27 @@ export default {
       });
     }
 
+    if (path === "/favicon.svg") {
+      return new Response(FAVICON_SVG, {
+        status: 200,
+        headers: { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" },
+      });
+    }
+
+    // Browsers request this by default even with a <link rel="icon"> pointing
+    // elsewhere — redirect rather than let it fall through to a 404.
+    if (path === "/favicon.ico") {
+      return new Response(null, { status: 302, headers: { location: "/favicon.svg" } });
+    }
+
+    if (path === "/robots.txt") {
+      return new Response(renderRobotsTxt(baseUrl), { status: 200, headers: { "content-type": "text/plain; charset=utf-8" } });
+    }
+
+    if (path === "/sitemap.xml") {
+      return new Response(renderSitemapXml(baseUrl), { status: 200, headers: { "content-type": "application/xml; charset=utf-8" } });
+    }
+
     if (path === "/blog") {
       return html(200, renderBlogIndex(baseUrl));
     }
@@ -118,7 +141,8 @@ export default {
     const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) {
       const rendered = renderBlogPost(blogMatch[1], baseUrl);
-      return rendered ? html(200, rendered) : json(404, { error: `no such post '${blogMatch[1]}'` });
+      if (rendered) return html(200, rendered);
+      return new Response(render404(baseUrl), { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     if (path === "/v1/health") {
@@ -361,6 +385,16 @@ export default {
     // session that was standing in for one.
     if (path === "/v1/sso/logout") {
       return new Response(null, { status: 302, headers: { location: `${baseUrl}/pricing`, "set-cookie": buildClearSessionCookieHeader() } });
+    }
+
+    // A human visiting an unknown page (typo, stale link) gets a styled 404
+    // like the rest of the site, *before* the auth gate below — otherwise an
+    // unauthenticated request to a non-existent page would incorrectly come
+    // back "401 unauthorized" instead of "404 not found" (tenant auth is
+    // always configured on the hosted Worker). API routes (/v1/*) keep their
+    // existing auth-first, JSON-404 behavior.
+    if (!path.startsWith("/v1/")) {
+      return new Response(render404(baseUrl), { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
     }
 
     // ---------- Authenticated routes ----------

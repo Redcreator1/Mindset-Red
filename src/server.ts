@@ -14,9 +14,11 @@ import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData 
 import { createCheckoutSession, newOrgId, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
-import { renderHome, renderDocs } from "./home.js";
+import { renderHome, renderDocs, render404 } from "./home.js";
 import { renderBlogIndex, renderBlogPost } from "./blog.js";
 import { ogImageBytes } from "./og-image.js";
+import { FAVICON_SVG } from "./favicon.js";
+import { renderRobotsTxt, renderSitemapXml } from "./seo.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "./workos.js";
 import {
   buildClearSessionCookieHeader, buildClearStateCookieHeader, buildSessionCookieHeader, buildStateCookieHeader,
@@ -299,6 +301,33 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    if (path === "/favicon.svg") {
+      res.writeHead(200, { "content-type": "image/svg+xml", "cache-control": "public, max-age=86400" });
+      res.end(FAVICON_SVG);
+      return;
+    }
+
+    // Browsers request this by default even with a <link rel="icon"> pointing
+    // elsewhere — redirect rather than let it fall through to a 404.
+    if (path === "/favicon.ico") {
+      res.writeHead(302, { location: "/favicon.svg" });
+      res.end();
+      return;
+    }
+
+    if (path === "/robots.txt") {
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
+      res.end(renderRobotsTxt(opts.appBaseUrl));
+      return;
+    }
+
+    if (path === "/sitemap.xml") {
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      res.writeHead(200, { "content-type": "application/xml; charset=utf-8" });
+      res.end(renderSitemapXml(base));
+      return;
+    }
+
     if (path === "/blog") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(renderBlogIndex(opts.appBaseUrl));
@@ -309,7 +338,8 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     if (blogMatch) {
       const rendered = renderBlogPost(blogMatch[1], opts.appBaseUrl);
       if (!rendered) {
-        sendJson(res, 404, { error: `no such post '${blogMatch[1]}'` });
+        res.writeHead(404, { "content-type": "text/html; charset=utf-8" });
+        res.end(render404(opts.appBaseUrl));
         return;
       }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -678,6 +708,18 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // A human visiting an unknown page (typo, stale link) gets a styled 404
+    // like the rest of the site, *before* the auth gate below — otherwise an
+    // unauthenticated request to a non-existent page would incorrectly come
+    // back "401 unauthorized" instead of "404 not found" whenever tenant
+    // auth is configured (the always-on case for the hosted Worker). API
+    // routes (/v1/*) keep their existing auth-first, JSON-404 behavior.
+    if (!path.startsWith("/v1/")) {
+      res.writeHead(404, { "content-type": "text/html; charset=utf-8" });
+      res.end(render404(opts.appBaseUrl));
+      return;
+    }
+
     if (req.method !== "GET") {
       sendJson(res, 405, { error: "method not allowed" });
       return;
@@ -876,6 +918,8 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Everything reaching here is under /v1/* (the check above already
+    // handled every other path) — API clients get JSON, which is what they parse.
     sendJson(res, 404, {
       error: "not found",
       routes: [

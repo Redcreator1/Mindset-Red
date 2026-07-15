@@ -82,6 +82,37 @@ test("Worker: /blog lists posts, /blog/:slug renders one, unknown slugs 404", as
 
   const missing = await worker.fetch(new Request("https://ctx.example.com/blog/does-not-exist"), env);
   assert.equal(missing.status, 404);
+  assert.match(await missing.text(), /<!doctype html>/, "styled 404, not JSON");
+});
+
+test("Worker: /favicon.svg is served; /favicon.ico redirects to it", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const favicon = await worker.fetch(new Request("https://ctx.example.com/favicon.svg"), env);
+  assert.equal(favicon.status, 200);
+  assert.equal(favicon.headers.get("content-type"), "image/svg+xml");
+
+  const ico = await worker.fetch(new Request("https://ctx.example.com/favicon.ico"), env);
+  assert.equal(ico.status, 302);
+  assert.equal(ico.headers.get("location"), "/favicon.svg");
+});
+
+test("Worker: robots.txt and sitemap.xml are served for search engines", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const robots = await worker.fetch(new Request("https://ctx.example.com/robots.txt"), env);
+  assert.equal(robots.status, 200);
+  assert.match(await robots.text(), /Disallow: \/v1\//);
+
+  const sitemap = await worker.fetch(new Request("https://ctx.example.com/sitemap.xml"), env);
+  assert.equal(sitemap.status, 200);
+  assert.equal(sitemap.headers.get("content-type"), "application/xml; charset=utf-8");
+  assert.match(await sitemap.text(), /<loc>https:\/\/ctx\.example\.com\/blog<\/loc>/);
+});
+
+test("Worker: an unknown page 404s with a styled page, not the 401 an unmatched path used to get from the auth gate", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/this-page-does-not-exist"), env);
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /<!doctype html>/);
 });
 
 test("Worker: unauthenticated dashboard call → 401", async () => {

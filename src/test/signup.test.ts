@@ -152,14 +152,41 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(docs.status, 200);
     assert.match(await docs.text(), /Documentation/);
 
-    // /blog lists posts; /blog/:slug renders one; unknown slugs 404.
+    // /blog lists posts; /blog/:slug renders one; unknown slugs 404 (styled HTML, not JSON).
     const blogIndex = await fetch(`${base}/blog`);
     assert.equal(blogIndex.status, 200);
     assert.match(await blogIndex.text(), /href="\/blog\/infrastructure-de-contexte-pour-agents-ia"/);
     const blogPost = await fetch(`${base}/blog/infrastructure-de-contexte-pour-agents-ia`);
     assert.equal(blogPost.status, 200);
     assert.match(await blogPost.text(), /mindset-ctx/);
-    assert.equal((await fetch(`${base}/blog/does-not-exist`)).status, 404);
+    const missingPost = await fetch(`${base}/blog/does-not-exist`);
+    assert.equal(missingPost.status, 404);
+    assert.match(await missingPost.text(), /<!doctype html>/);
+
+    // /favicon.svg is served; the legacy /favicon.ico request redirects to it.
+    const favicon = await fetch(`${base}/favicon.svg`);
+    assert.equal(favicon.status, 200);
+    assert.equal(favicon.headers.get("content-type"), "image/svg+xml");
+    const faviconIco = await fetch(`${base}/favicon.ico`, { redirect: "manual" });
+    assert.equal(faviconIco.status, 302);
+    assert.equal(faviconIco.headers.get("location"), "/favicon.svg");
+
+    // robots.txt / sitemap.xml for search engines.
+    const robots = await fetch(`${base}/robots.txt`);
+    assert.equal(robots.status, 200);
+    assert.match(await robots.text(), /Disallow: \/v1\//);
+    const sitemap = await fetch(`${base}/sitemap.xml`);
+    assert.equal(sitemap.status, 200);
+    assert.equal(sitemap.headers.get("content-type"), "application/xml; charset=utf-8");
+    assert.match(await sitemap.text(), /<loc>http:\/\/ctx\.local\/blog<\/loc>/);
+
+    // An unknown page gets a styled 404 — crucially NOT "401 unauthorized",
+    // which is what an unauthenticated request used to get here (tenant auth
+    // is configured on this server via tenantStore, the same as production):
+    // the auth gate used to run before routing had a chance to say "not found".
+    const unknownPage = await fetch(`${base}/this-page-does-not-exist`);
+    assert.equal(unknownPage.status, 404);
+    assert.match(await unknownPage.text(), /<!doctype html>/);
 
     // /v1/signup mints a tenant, calls Stripe, redirects to Checkout.
     const signup = await fetch(`${base}/v1/signup?plan=pro`, { redirect: "manual" });

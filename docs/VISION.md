@@ -314,3 +314,25 @@ personne ; fournisseur de tout le monde.
   Worker, 3 nouveaux tests (bytes PNG valides 1200×630, balises présentes/
   absentes selon `baseUrl`, route `/og-image.png` sur les deux runtimes).
   Version 0.21.0.
+- **15/07/2026** — Trois dernières pistes de polish du site attaquées d'un
+  coup (favicon, page 404 stylée, robots.txt/sitemap) après validation
+  utilisateur. Favicon : même logo crochets bleus que partout ailleurs,
+  servi en SVG inline (`/favicon.svg`), `/favicon.ico` redirige dessus (les
+  navigateurs le demandent par défaut même avec un `<link rel="icon">`).
+  robots.txt/sitemap.xml : routes simples, sitemap liste les pages statiques
+  + chaque article de blog (via `blogSlugs()` exporté de `blog.ts`, pas de
+  duplication de la liste des posts).
+  **Vrai bug trouvé en construisant la 404** : sur les deux runtimes, une
+  route non reconnue tombait dans la porte d'authentification *avant*
+  d'atteindre le point où elle aurait été reconnue comme "introuvable" — un
+  visiteur non-authentifié tapant une mauvaise URL recevait "401
+  unauthorized" au lieu de "404 not found", dès que l'auth tenant était
+  configurée. Sur le Worker Cloudflare réellement déployé, l'auth tenant
+  est *toujours* activée (`store.get(requestKey(req))` tourne sur chaque
+  requête authentifiée), donc ce bug touchait 100% du trafic hébergé, pas
+  un cas limite. Corrigé en sortant la vérification "page inconnue → 404
+  stylée" *avant* la porte d'authentification pour tout chemin ne
+  commençant pas par `/v1/` — les routes API gardent leur comportement
+  auth-d'abord/JSON existant, inchangé. 11 nouveaux tests (favicon,
+  robots.txt, sitemap, 404 stylée, et surtout le test de non-régression
+  401→404 sur les deux runtimes). Version 0.22.0.

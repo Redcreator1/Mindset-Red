@@ -57,6 +57,7 @@ export function shell(opts: { title: string; description: string; body: string; 
   return `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>${esc(opts.title)}</title>
 ${ogMeta(opts)}
 <style>${BASE_STYLE}</style>
@@ -251,4 +252,15 @@ export function renderDocs(baseUrl?: string): string {
     baseUrl,
     path: "/docs",
   });
+}
+
+/** Styled 404 for human visitors — API routes (/v1/*) keep their JSON 404 instead. */
+export function render404(baseUrl?: string): string {
+  const body = `
+<main style="max-width:520px;margin:100px auto;padding:0 32px;text-align:center">
+  <h1 style="font-size:64px;margin:0 0 8px;color:#60a5fa">404</h1>
+  <p style="color:#94a3b8;font-size:17px;margin:0 0 28px">Cette page n'existe pas.</p>
+  <a href="/" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retour à l'accueil</a>
+</main>`;
+  return shell({ title: "Page introuvable — mindset-ctx", description: "Cette page n'existe pas.", body, baseUrl });
 }
