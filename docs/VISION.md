@@ -443,6 +443,33 @@ personne ; fournisseur de tout le monde.
   le `sharp` transitif échouait sur le proxy) et `npm audit` passe de 4
   vulnérabilités (1 critique) à 0 — la vulnérabilité `protobufjs` documentée
   dans l'entrée précédente disparaît avec le changement de paquet.
+- **16/07/2026** — Deuxième panne réelle trouvée en continuant l'exécution du
+  notebook : la Cellule 5 corrigée échouait maintenant sur `mv: cannot stat
+  'rank_ml_model/model.onnx'` — `optimum-cli export onnx` n'avait rien
+  produit. Diagnostiqué pas à pas avec l'utilisateur (`!find / -iname
+  "*fine_tuned*"` : aucun résultat nulle part) : le dossier `fine_tuned_model`
+  que la Cellule 4 devait créer n'existait tout simplement pas, alors même
+  que la barre de progression de l'entraînement s'affichait normalement.
+  Vérifié contre le vrai code/doc actuel de `sentence-transformers` (comme
+  pour `optimum`/`transformers.js` juste avant) plutôt que re-deviner :
+  le paquet est passé en v5.x, qui remplace `CrossEncoder.fit(train_dataloader=
+  ..., output_path=...)` (API pré-5.x utilisée dans la version précédente du
+  notebook) par un `CrossEncoderTrainer` de style HF Trainer — celui-ci
+  n'écrit **pas** automatiquement sur `output_path` ; il faut appeler
+  explicitement `model.save_pretrained(...)` après `trainer.train()`. Le nom
+  du modèle de base était aussi légèrement faux (`ms-marco-MiniLM-L-6-v2`
+  avec tiret, alors que le vrai identifiant confirmé dans la doc actuelle est
+  `ms-marco-MiniLM-L6-v2`, sans tiret).
+  Cellules 3 et 4 réécrites pour utiliser l'API réelle et actuelle :
+  `datasets.Dataset` à la place d'une liste de tuples, `CrossEncoderTrainer`
+  + `BinaryCrossEntropyLoss` (adaptée à des labels 0/1 sur une seule sortie —
+  exactement notre cas) à la place de `.fit()`, et un `model.save_pretrained
+  ("fine_tuned_model")` explicite avant le print de confirmation.
+  Deux corrections réelles en cascade sur ce notebook ce soir (paquet ONNX,
+  puis API d'entraînement) — chacune trouvée en le faisant réellement tourner
+  avec l'utilisateur et vérifiée contre la doc actuelle avant d'être proposée,
+  pas depuis la mémoire. Aucun changement côté `src/` — uniquement
+  `notebooks/train_rank_ml.py`, toujours 123/123 côté TypeScript.
 - **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
   **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
   déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).

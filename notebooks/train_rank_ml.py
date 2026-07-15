@@ -4,7 +4,7 @@
 # Paste each "# %%"-delimited block into its own cell, in order.
 #
 # What this does, honestly:
-#   - Starts from `cross-encoder/ms-marco-MiniLM-L-6-v2`, a real cross-encoder
+#   - Starts from `cross-encoder/ms-marco-MiniLM-L6-v2`, a real cross-encoder
 #     already trained on MS MARCO (a public, human-labeled query/passage
 #     relevance dataset) — so it's a genuinely trained model from the start,
 #     not something invented for this project.
@@ -24,14 +24,23 @@
 # (confirmed via curl — same restriction category as several other blocked
 # hosts there). Run it here in Colab, which has full internet access.
 #
-# Correction history: an earlier version of cell [5] cloned
-# github.com/xenova/transformers.js and ran its scripts/convert.py — that
-# tool no longer exists. The project moved to the huggingface GitHub org
-# and dropped its bespoke conversion script in favor of the standard
-# `optimum-onnx` exporter; the npm package moved from @xenova/transformers
-# to @huggingface/transformers too. Found by actually running this notebook
-# and hitting a real "no such file" error, then re-verified against that
-# project's current README before rewriting cell [5] below.
+# Correction history:
+# - An earlier version of cell [5] cloned github.com/xenova/transformers.js
+#   and ran its scripts/convert.py — that tool no longer exists. The project
+#   moved to the huggingface GitHub org and dropped its bespoke conversion
+#   script in favor of the standard `optimum-onnx` exporter; the npm package
+#   moved from @xenova/transformers to @huggingface/transformers too.
+# - An earlier version of cell [4] used CrossEncoder.fit(output_path=...),
+#   the pre-5.x sentence-transformers API. sentence-transformers 5.x replaced
+#   it with a CrossEncoderTrainer (HF Trainer-based) that does NOT save to
+#   output_path automatically — model.save_pretrained(...) must be called
+#   explicitly after training. Running the old code produced a fine-tuning
+#   progress bar (so it looked like it worked) but never actually wrote
+#   fine_tuned_model/, which only surfaced as a failure two cells later, in
+#   export. Both found by actually running this notebook and hitting real
+#   errors, then re-verified against each project's current docs before
+#   rewriting the cells below — not caught in advance, since neither
+#   huggingface.co nor a GPU were reachable from where this was first written.
 
 # %% [1] Install dependencies (Colab has torch preinstalled; this adds the rest)
 # !pip install -q sentence-transformers
@@ -57,6 +66,8 @@ assert len(records) >= 20, "Need at least ~20 records for even a toy fine-tune �
 # %% [3] Build weak-labeled (query, passage, label) training pairs
 import random
 
+from datasets import Dataset
+
 random.seed(0)
 
 
@@ -64,32 +75,52 @@ def passage_for(record: dict) -> str:
     return f"{record['title']} {record['body']}".strip()[:512]
 
 
-pairs: list[tuple[str, str, float]] = []
+queries: list[str] = []
+passages: list[str] = []
+labels: list[float] = []
 for r in records:
     query = r["title"]
-    pairs.append((query, passage_for(r), 1.0))  # positive: a record's own title names itself
+    queries.append(query)
+    passages.append(passage_for(r))
+    labels.append(1.0)  # positive: a record's own title names itself
     negative = random.choice([o for o in records if o["id"] != r["id"]])
-    pairs.append((query, passage_for(negative), 0.0))  # negative: an unrelated record
+    queries.append(query)
+    passages.append(passage_for(negative))
+    labels.append(0.0)  # negative: an unrelated record
 
-random.shuffle(pairs)
-print(f"Built {len(pairs)} weak-labeled training pairs")
+# Column order matters more than names for sentence-transformers' loss
+# matching, but "label" specifically must be named that (or "labels"/"score"/
+# "scores") to be recognized as the target rather than a third input.
+train_dataset = Dataset.from_dict({"query": queries, "passage": passages, "label": labels}).shuffle(seed=0)
+print(train_dataset)
 
 # %% [4] Fine-tune the pretrained cross-encoder on those pairs
-from sentence_transformers import CrossEncoder, InputExample
-from torch.utils.data import DataLoader
+# CrossEncoderTrainer (sentence-transformers 5.x) — replaces the old
+# CrossEncoder.fit(train_dataloader=..., output_path=...) API, which no
+# longer reliably saves a model (see the correction note up top).
+from sentence_transformers import CrossEncoder
+from sentence_transformers.cross_encoder import CrossEncoderTrainer, CrossEncoderTrainingArguments
+from sentence_transformers.cross_encoder.losses import BinaryCrossEntropyLoss
 
-model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", num_labels=1)
+model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2", num_labels=1, model_kwargs={"torch_dtype": "float32"})
+loss = BinaryCrossEntropyLoss(model)
 
-train_examples = [InputExample(texts=[q, p], label=label) for q, p, label in pairs]
-train_dataloader = DataLoader(train_examples, shuffle=True, batch_size=16)
-
-model.fit(
-    train_dataloader=train_dataloader,
-    epochs=1,  # weak labels + a small repo-sized dataset — more epochs risks overfitting the noise
-    warmup_steps=int(0.1 * len(train_dataloader)),
-    output_path="fine_tuned_model",
+args = CrossEncoderTrainingArguments(
+    output_dir="checkpoints",  # trainer's own checkpoints — not the final model, see below
+    num_train_epochs=1,  # weak labels + a small repo-sized dataset — more epochs risks overfitting the noise
+    per_device_train_batch_size=16,
+    learning_rate=2e-5,
+    warmup_ratio=0.1,
+    logging_steps=10,
 )
-print("Saved fine-tuned model to ./fine_tuned_model")
+
+trainer = CrossEncoderTrainer(model=model, args=args, train_dataset=train_dataset, loss=loss)
+trainer.train()
+
+# Explicit save is required — the trainer's output_dir above only holds
+# intermediate checkpoints, not a directly loadable final model.
+model.save_pretrained("fine_tuned_model")
+print("Modèle sauvegardé dans ./fine_tuned_model")
 
 # %% [5] Export to the ONNX layout src/rank-ml.ts expects
 # `optimum-onnx` is HuggingFace's current, actively maintained ONNX exporter
