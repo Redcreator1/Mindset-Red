@@ -1,5 +1,6 @@
 import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js";
 import { renderHome, renderDocs } from "../home.js";
+import { renderBlogIndex, renderBlogPost } from "../blog.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
@@ -98,6 +99,16 @@ export default {
     if (path === "/pricing") {
       const availablePlans = new Set<PlanId>(Object.values(priceMap));
       return html(200, renderPricing({ baseUrl, availablePlans }));
+    }
+
+    if (path === "/blog") {
+      return html(200, renderBlogIndex());
+    }
+
+    const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);
+    if (blogMatch) {
+      const rendered = renderBlogPost(blogMatch[1]);
+      return rendered ? html(200, rendered) : json(404, { error: `no such post '${blogMatch[1]}'` });
     }
 
     if (path === "/v1/health") {
@@ -412,7 +423,7 @@ export default {
     return json(404, {
       error: "not found",
       routes: [
-        "/pricing", "/v1/health", "/v1/signup?plan=", "/v1/signup/success", "/v1/stripe/webhook",
+        "/pricing", "/blog", "/blog/:slug", "/v1/health", "/v1/signup?plan=", "/v1/signup/success", "/v1/stripe/webhook",
         "/v1/app/manifest", "/v1/app/webhook", "/v1/app/installed?installation_id=",
         "/v1/sso/login", "/v1/sso/callback", "/v1/sso/logout",
         "/v1/usage", "/v1/dashboard", "/v1/team/invite?name=", "/v1/team/remove?key=",

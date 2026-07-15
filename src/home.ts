@@ -7,9 +7,9 @@
  * left to build — only DNS.
  */
 
-const REPO_URL = "https://github.com/Redcreator1/Mindset-Red";
+export const REPO_URL = "https://github.com/Redcreator1/Mindset-Red";
 
-function esc(s: string): string {
+export function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
 
@@ -29,7 +29,7 @@ const BASE_STYLE = `
   footer a { color: #64748b; }
 `;
 
-function shell(title: string, body: string): string {
+export function shell(title: string, body: string): string {
   return `<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -42,13 +42,14 @@ function shell(title: string, body: string): string {
   <nav class="top">
     <a href="/docs">Documentation</a>
     <a href="/pricing">Tarifs</a>
+    <a href="/blog">Blog</a>
     <a href="${REPO_URL}">GitHub</a>
   </nav>
 </header>
 ${body}
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
-  <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/v1/dashboard">Dashboard</a>
+  <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a>
 </footer>
 </body></html>`;
 }

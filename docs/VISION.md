@@ -276,3 +276,19 @@ personne ; fournisseur de tout le monde.
   Marketplace. Aucune des trois n'était critique (impacts limités par les
   clés secrètes et le Workspace Trust de VS Code), mais toutes étaient
   réelles — corrigées le soir même plutôt que consignées dans un backlog.
+- **15/07/2026** — Compte X (@MindsetAether) créé par l'utilisateur pour la
+  communication produit, avec X Premium pour les Articles longs. Premier
+  article rédigé (texte + deux visuels en SVG/PNG dans la palette du site)
+  pour le lancement. Question ensuite posée : intégrer cet article sur le
+  site via l'embed X officiel (`<blockquote class="twitter-tweet">` +
+  `platform.x.com/widgets.js`) ? Réponse : non, pas pro — ça charge un
+  script tiers (tracking X hors de notre contrôle), et la carte embarquée a
+  le style X, pas la palette du site. Construit à la place un vrai blog
+  natif (`src/blog.ts`, `GET /blog` et `/blog/:slug`) : contenu écrit dans
+  le même design que `home.ts`/`pricing.ts`, visuels de couverture en SVG
+  inline (pas d'image séparée à héberger, aucune dépendance externe, aucun
+  script). Premier article publié : présentation de mindset-ctx, reprenant
+  le texte et les visuels préparés pour X. Parité Node + Worker dès le
+  départ. Le lien X reste utile pour partager/retweeter, mais le contenu
+  lui-même vit sur notre domaine, indexable, sans dépendance à un service
+  tiers.
