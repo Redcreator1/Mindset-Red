@@ -95,6 +95,75 @@ function featuresSvg(): string {
 
 const POSTS: BlogPost[] = [
   {
+    slug: "mcp-explique",
+    title: "MCP expliqué : le protocole qui évite de recoder l'intégration pour chaque agent IA",
+    date: "2026-07-18",
+    excerpt:
+      "Avant MCP, brancher vos données sur Claude, Cursor et Copilot voulait dire écrire trois intégrations différentes. Le protocole standardise ça — voici comment, et ce que ça change concrètement pour une équipe.",
+    bodyHtml: `
+<p>Avant le <strong>Model Context Protocol</strong> (MCP), donner à un agent IA accès à vos
+données — un repo, une base de connaissances, un outil interne — voulait dire écrire une
+intégration spécifique par agent : un plugin pour Claude, une extension pour Cursor, un
+connecteur pour Copilot. Trois agents, trois codebases à maintenir, pour exposer
+exactement la même chose trois fois.</p>
+
+<p>MCP règle ce problème en standardisant l'interface plutôt que l'implémentation.</p>
+
+<h2>Le principe : un serveur, n'importe quel client</h2>
+<p>MCP définit un protocole client-serveur : un <strong>serveur MCP</strong> expose des
+<em>outils</em> (des fonctions que l'agent peut appeler), des <em>ressources</em> (des
+données qu'il peut lire) et des <em>prompts</em> (des templates réutilisables). N'importe
+quel <strong>client MCP</strong> — Claude Code, Cursor, et tout agent qui parle le
+protocole — peut s'y connecter et découvrir automatiquement ce qui est disponible, sans
+code spécifique à cet agent.</p>
+
+<p>L'analogie la plus proche : le <strong>Language Server Protocol</strong> a réglé le même
+problème pour les éditeurs de code (un serveur de langage, n'importe quel éditeur
+compatible) des années avant que les agents IA n'existent. MCP fait le même pari pour le
+contexte et les outils.</p>
+
+<h2>Concrètement, ça donne quoi</h2>
+<p>mindset-ctx expose trois outils via MCP :</p>
+<ul>
+  <li><code>get_context</code> — lit un fichier de contexte (<code>CLAUDE.md</code>,
+  <code>AGENTS.md</code>, architecture, prompts)</li>
+  <li><code>search_memory</code> — recherche dans la mémoire du repo (commits, PRs, issues)</li>
+  <li><code>analyze_repo</code> — analyse structurée et fraîche du repo</li>
+</ul>
+
+<p>Écrit une fois, utilisable tel quel dans Claude Code :</p>
+<pre>claude mcp add mindset-ctx -- node /chemin/vers/dist/cli.js mcp /chemin/vers/repo</pre>
+
+<p>Et dans Cursor, sans une ligne de code supplémentaire côté mindset-ctx — Cursor parle
+MCP nativement. Il suffit de déclarer le serveur dans <code>.cursor/mcp.json</code> :</p>
+<pre>{
+  "mcpServers": {
+    "mindset-ctx": {
+      "command": "node",
+      "args": ["/chemin/vers/dist/cli.js", "mcp", "/chemin/vers/repo"]
+    }
+  }
+}</pre>
+
+<p>Même serveur, zéro changement de code, deux agents différents qui appellent les mêmes
+outils. C'est tout l'intérêt : la prochaine extension IA qui adopte MCP fonctionnera aussi,
+sans rien reconstruire.</p>
+
+<h2>Pourquoi ça compte pour une équipe</h2>
+<p>Sans standard, le choix d'un agent IA engage une équipe sur son écosystème d'outils.
+Avec MCP, le contexte et la mémoire d'un repo deviennent une brique indépendante du modèle
+ou de l'éditeur — exactement la logique derrière la brique <strong>Gateway</strong> de
+mindset-ctx : un seul serveur MCP, branché une fois, qui sert Claude Code, Cursor et tout
+ce qui viendra ensuite.</p>
+
+<pre>npm install -g mindset-ctx
+ctx generate .
+ctx mcp .</pre>
+
+<p>Open source, sur GitHub : <a href="${REPO_URL}">${REPO_URL.replace("https://", "")}</a></p>
+`,
+  },
+  {
     slug: "claude-md-vs-agents-md",
     title: "CLAUDE.md vs AGENTS.md : quelle différence, et faut-il les deux ?",
     date: "2026-07-17",
