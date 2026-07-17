@@ -97,6 +97,17 @@ test("dashboard routes serve HTML and JSON, scoped per tenant", async () => {
 
     // Unauthenticated → 401 in tenants mode.
     assert.equal((await fetch(`${base}/v1/dashboard`)).status, 401);
+
+    // ?key= works on the dashboard page itself — the one route meant to be
+    // opened by clicking a plain link (from the post-checkout success page),
+    // which can't carry an Authorization header.
+    const keyLinkRes = await fetch(`${base}/v1/dashboard?key=sk-alice`);
+    assert.equal(keyLinkRes.status, 200);
+    assert.ok((await keyLinkRes.text()).includes("alpha"));
+
+    // But not on /v1/usage — the query-param fallback must stay scoped to
+    // the dashboard, not silently apply to every authenticated route.
+    assert.equal((await fetch(`${base}/v1/usage?key=sk-alice`)).status, 401);
   } finally {
     server.close();
   }

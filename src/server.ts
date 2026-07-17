@@ -756,6 +756,14 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         const sessionKey = verifySessionToken(parseCookie(req.headers.cookie, SESSION_COOKIE), opts.workosApiKey);
         tenant = store.get(sessionKey ?? undefined);
       }
+      // The dashboard is the one route meant to be opened by clicking a
+      // plain link (from the post-checkout success page) rather than called
+      // with a header — a browser navigation can't attach an Authorization
+      // header, so a ?key= fallback is accepted here only, never on routes
+      // that mutate state (team invite/remove, checkout).
+      if (!tenant && path === "/v1/dashboard") {
+        tenant = store.get(url.searchParams.get("key") ?? undefined);
+      }
       if (!tenant) {
         sendJson(res, 401, { error: "unauthorized — pass a tenant key via Authorization: Bearer <key> or x-api-key" });
         return;

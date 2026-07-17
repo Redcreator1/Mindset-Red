@@ -127,7 +127,7 @@ export function renderSuccess(tenantKey: string, baseUrl = ""): string {
   <p class="warn">Copiez-la maintenant — elle ne sera plus jamais affichée.</p>
   <p>Utilisation — vérifiez votre quota :</p>
   <code>curl -H "Authorization: Bearer ${esc(tenantKey)}" ${esc(apiBase)}/v1/usage</code>
-  <p>Votre <a href="${esc(apiBase)}/v1/dashboard">dashboard</a> est accessible avec cette même clé. Pour le self-hosted et l'intégration Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
+  <p>Votre <a href="${esc(apiBase)}/v1/dashboard?key=${esc(encodeURIComponent(tenantKey))}">dashboard</a> est accessible avec cette même clé (le lien ci-dessus fonctionne directement). Pour le self-hosted et l'intégration Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
 </main></body></html>`;
 }
 
