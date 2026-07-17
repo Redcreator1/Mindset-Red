@@ -506,3 +506,16 @@ personne ; fournisseur de tout le monde.
   nouveaux tests (redirection prod + preview, pas de boucle sans
   CTX_BASE_URL, pas de redirection sur le domaine déjà canonique) — 116/116
   au total.
+- **17/07/2026** — Demande explicite de retirer complètement le nom
+  "workers" maintenant que le vrai domaine est payé et configuré : plutôt
+  que de laisser `*.workers.dev` tourner en parallèle indéfiniment (ce que
+  la redirection 301 de la session précédente permettait déjà, mais sans
+  couper l'ancienne URL), ajouté `workers_dev = false` dans `wrangler.toml`
+  — Cloudflare ne route plus du tout ce sous-domaine vers le Worker une
+  fois le Custom Domain en place. `docs/DOMAIN-SETUP.md` mis à jour en
+  conséquence. La redirection 301 dans `src/worker/index.ts` reste en
+  place comme filet de sécurité (harmless si jamais réactivé), pas retirée.
+  Au passage : la branche Rank ML (PR #21, encore non mergée) avait été
+  créée avant la migration de domaine — un rebase sur `main` était
+  nécessaire pour ne pas régresser `CTX_BASE_URL` vers l'ancienne URL
+  `*.workers.dev` au prochain merge.
