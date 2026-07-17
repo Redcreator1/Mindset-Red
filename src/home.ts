@@ -3,7 +3,7 @@
  * from pricing.ts on purpose: pricing.ts is the payment funnel (plans,
  * checkout, success), this is the front door that explains what mindset-ctx
  * *is* before anyone gets near a "buy" button. Written so that the moment a
- * real domain (mindset-ctx.dev) is pointed at this Worker, there is nothing
+ * real domain (mindsetctx.com) is pointed at this Worker, there is nothing
  * left to build — only DNS.
  */
 
