@@ -87,8 +87,9 @@ Usage:
                                (idempotent) and print STRIPE_PRICE_MAP ready
                                to paste. Needs CTX_STRIPE_API_KEY.
   ctx stripe webhook <url>     Create (or reuse) a Stripe webhook endpoint
-                               pointed at <url>/v1/stripe/webhook, idempotent
-                               by URL, and print CTX_STRIPE_SECRET ready to
+                               pointed at <url> — pass the full webhook URL,
+                               e.g. https://host/v1/stripe/webhook. Idempotent
+                               by URL; prints CTX_STRIPE_SECRET ready to
                                paste. Needs CTX_STRIPE_API_KEY. No Stripe
                                Dashboard access required — this is the
                                scriptable replacement for creating the
