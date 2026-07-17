@@ -153,6 +153,19 @@ test("Worker: unauthenticated dashboard call → 401", async () => {
   assert.equal(res.status, 401);
 });
 
+test("Worker: ?key= authenticates the dashboard page (clickable from the success page) but not /v1/usage", async () => {
+  const kv = new MemKV();
+  const store = new KvTenantStore(kv);
+  await store.upsert({ key: "sk-alice", name: "alice", repos: "*", plan: "pro" });
+  const env = { CTX_KV: kv };
+
+  const viaLink = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard?key=sk-alice"), env);
+  assert.equal(viaLink.status, 200);
+
+  const usageViaQuery = await worker.fetch(new Request("https://ctx.example.com/v1/usage?key=sk-alice"), env);
+  assert.equal(usageViaQuery.status, 401, "the ?key= fallback must stay scoped to the dashboard route");
+});
+
 test("Worker: KvTenantStore round-trips and setPlan works", async () => {
   const kv = new MemKV();
   const store = new KvTenantStore(kv);

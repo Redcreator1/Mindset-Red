@@ -418,6 +418,14 @@ export default {
       const sessionKey = await verifySessionTokenWeb(parseCookie(req.headers.get("cookie"), SESSION_COOKIE), env.WORKOS_API_KEY);
       tenant = await store.get(sessionKey ?? undefined);
     }
+    // The dashboard is the one route meant to be opened by clicking a plain
+    // link (from the post-checkout success page) rather than called with a
+    // header — a browser navigation can't attach an Authorization header, so
+    // a ?key= fallback is accepted here only, never on routes that mutate
+    // state (team invite/remove, checkout).
+    if (!tenant && path === "/v1/dashboard") {
+      tenant = await store.get(url.searchParams.get("key") ?? undefined);
+    }
     if (!tenant) return json(401, { error: "unauthorized — pass Authorization: Bearer <key>" });
     // A team seat's quota is pooled on the organization, not the individual
     // tenant — every teammate draws from the same daily counter.
