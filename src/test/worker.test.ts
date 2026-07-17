@@ -115,6 +115,38 @@ test("Worker: an unknown page 404s with a styled page, not the 401 an unmatched 
   assert.match(await res.text(), /<!doctype html>/);
 });
 
+test("Worker: a *.workers.dev request permanently redirects to the configured custom domain", async () => {
+  const env = { CTX_KV: new MemKV(), CTX_BASE_URL: "https://mindsetctx.com" };
+  const res = await worker.fetch(
+    new Request("https://mindset-ctx.mindset2026.workers.dev/pricing?plan=pro", { redirect: "manual" }),
+    env,
+  );
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get("location"), "https://mindsetctx.com/pricing?plan=pro");
+});
+
+test("Worker: the preview *-mindset-ctx.workers.dev subdomain also redirects", async () => {
+  const env = { CTX_KV: new MemKV(), CTX_BASE_URL: "https://mindsetctx.com" };
+  const res = await worker.fetch(
+    new Request("https://abc123-mindset-ctx.mindset2026.workers.dev/v1/health", { redirect: "manual" }),
+    env,
+  );
+  assert.equal(res.status, 301);
+  assert.equal(res.headers.get("location"), "https://mindsetctx.com/v1/health");
+});
+
+test("Worker: without CTX_BASE_URL configured, workers.dev requests are served normally (no redirect loop)", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://mindset-ctx.mindset2026.workers.dev/v1/health"), env);
+  assert.equal(res.status, 200);
+});
+
+test("Worker: requests already on the custom domain are never redirected", async () => {
+  const env = { CTX_KV: new MemKV(), CTX_BASE_URL: "https://mindsetctx.com" };
+  const res = await worker.fetch(new Request("https://mindsetctx.com/v1/health"), env);
+  assert.equal(res.status, 200);
+});
+
 test("Worker: unauthenticated dashboard call → 401", async () => {
   const env = { CTX_KV: new MemKV() };
   const res = await worker.fetch(new Request("https://ctx.example.com/v1/dashboard"), env);
