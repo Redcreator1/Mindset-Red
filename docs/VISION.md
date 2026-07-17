@@ -352,3 +352,23 @@ personne ; fournisseur de tout le monde.
   "Mindset-CTX-Github") — la session a expiré impayée (carte vide ce
   jour-là), donc la boucle complète (vrai paiement encaissé) reste à
   valider, mais l'infrastructure elle-même est confirmée opérationnelle.
+- **17/07/2026** — `mindsetctx.com` confirmé en ligne : la PR #22 mergée a
+  déclenché le déploiement, et le workflow lui-même a vérifié
+  `https://mindsetctx.com/v1/health` en live (`"✅ Live at
+  https://mindsetctx.com"` dans les logs GitHub Actions) — pas une
+  supposition, une vérification réelle après un aller-retour où l'utilisateur
+  a d'abord (deux fois) tapé l'URL dans la barre de recherche Google au lieu
+  de la barre d'adresse, ce qui a fait planer un doute légitime ("arrête
+  d'halluciner"). Résolu en lisant directement les logs du job de déploiement
+  plutôt qu'en réaffirmant sans preuve.
+  Décision suivante : plutôt que de désactiver la visibilité publique du
+  sous-domaine `*.workers.dev` (ce qui casserait les liens déjà partagés
+  avec une erreur d'authentification Cloudflare Access), le Worker redirige
+  maintenant en 301 tout visiteur de `*.workers.dev` (production et preview)
+  vers `CTX_BASE_URL` dès qu'il est configuré — les anciens liens continuent
+  de fonctionner, juste redirigés vers le vrai domaine. Node-only concept
+  côté Worker uniquement (`*.workers.dev` n'existe pas sur `server.ts`) :
+  pas de parité à maintenir ici, c'est une spécificité Cloudflare. 4
+  nouveaux tests (redirection prod + preview, pas de boucle sans
+  CTX_BASE_URL, pas de redirection sur le domaine déjà canonique) — 116/116
+  au total.

@@ -71,6 +71,16 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
+
+    // Once a real custom domain is configured, permanently redirect the old
+    // *.workers.dev hostname to it (covers both the production and preview
+    // subdomains) — preserves links already shared with that URL instead of
+    // breaking them, rather than just disabling the subdomain's public
+    // visibility in the Cloudflare dashboard.
+    if (env.CTX_BASE_URL && url.host.endsWith(".workers.dev") && url.host !== new URL(env.CTX_BASE_URL).host) {
+      return Response.redirect(`${env.CTX_BASE_URL}${url.pathname}${url.search}`, 301);
+    }
+
     const store = new KvTenantStore(env.CTX_KV);
     const meter = new KvUsageMeter(env.CTX_KV);
     // A malformed STRIPE_PRICE_MAP secret must not take the whole site down
