@@ -1,4 +1,4 @@
-# Brancher mindset-ctx.dev — runbook
+# Brancher mindsetctx.com — runbook
 
 > Objectif : dès que le domaine est acheté, il ne reste plus qu'à suivre cette
 > page — le code (vitrine `/`, doc `/docs`, tarifs `/pricing`) est déjà en
@@ -11,9 +11,10 @@ ne peut recevoir un domaine personnalisé ("Custom Domain") que si ce domaine
 est **géré par Cloudflare** (nameservers pointés vers Cloudflare). Deux
 chemins possibles :
 
-- **Le plus simple** : acheter `mindset-ctx.dev` directement via
+- **Le plus simple** : acheter le domaine directement via
   [Cloudflare Registrar](https://dash.cloudflare.com/?to=/:account/domains/register) —
-  zéro étape de transfert, le domaine est utilisable immédiatement.
+  zéro étape de transfert, le domaine est utilisable immédiatement. C'est ce
+  qui a été fait pour `mindsetctx.com`.
 - **Si acheté ailleurs** (Vercel, Namecheap…) : il faudra changer les
   nameservers du domaine pour pointer vers Cloudflare avant l'étape 2
   ci-dessous. Ça prend généralement quelques heures à se propager — pas
@@ -22,14 +23,14 @@ chemins possibles :
 ## Les étapes, une fois le domaine prêt côté Cloudflare
 
 1. **Dashboard Cloudflare** → *Workers & Pages* → `mindset-ctx` → *Settings*
-   → *Domains & Routes* → *Add* → *Custom Domain* → saisir `mindset-ctx.dev`
-   (et `www.mindset-ctx.dev` si vous voulez les deux). Cloudflare crée le
+   → *Domains & Routes* → *Add* → *Custom Domain* → saisir `mindsetctx.com`
+   (et `www.mindsetctx.com` si vous voulez les deux). Cloudflare crée le
    certificat TLS automatiquement.
 2. **`wrangler.toml`** : mettre à jour `CTX_BASE_URL` pour qu'il pointe sur le
    vrai domaine plutôt que le `*.workers.dev` :
    ```toml
    [vars]
-   CTX_BASE_URL = "https://mindset-ctx.dev"
+   CTX_BASE_URL = "https://mindsetctx.com"
    ```
    C'est cette variable qui construit les URLs absolues dans les redirections
    Stripe (`success_url`/`cancel_url`) et les liens du dashboard — sans ce
@@ -37,10 +38,10 @@ chemins possibles :
    sous-domaine technique.
 3. **Redéployer** : relancer le workflow GitHub Actions *"Deploy to Cloudflare
    Workers"* (ou laisser le prochain push sur `main` le faire automatiquement).
-4. **Vérifier** : `curl https://mindset-ctx.dev/v1/health` doit répondre
-   `{"ok": true, ...}`, et `https://mindset-ctx.dev/pricing` → cliquer
+4. **Vérifier** : `curl https://mindsetctx.com/v1/health` doit répondre
+   `{"ok": true, ...}`, et `https://mindsetctx.com/pricing` → cliquer
    "Passer Pro" doit rediriger vers une vraie session Stripe avec l'URL de
-   succès en `mindset-ctx.dev` (pas l'ancien `*.workers.dev`).
+   succès en `mindsetctx.com` (pas l'ancien `*.workers.dev`).
 5. **GitHub App** (si elle existe déjà) : son manifest (`buildAppManifest`)
    utilise aussi `CTX_BASE_URL` — vérifier que l'URL de callback enregistrée
    côté GitHub correspond au nouveau domaine, sinon les installs existantes

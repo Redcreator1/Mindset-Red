@@ -336,3 +336,19 @@ personne ; fournisseur de tout le monde.
   auth-d'abord/JSON existant, inchangé. 11 nouveaux tests (favicon,
   robots.txt, sitemap, 404 stylée, et surtout le test de non-régression
   401→404 sur les deux runtimes). Version 0.22.0.
+- **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
+  **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
+  déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).
+  `CTX_BASE_URL` mis à jour dans `wrangler.toml`, `docs/DOMAIN-SETUP.md`
+  et le commentaire d'en-tête de `src/home.ts` alignés sur le nom réel.
+  Il reste une étape manuelle côté utilisateur (ajouter le Custom Domain
+  dans le dashboard Cloudflare Workers — pas accessible depuis ce
+  sandbox) avant que le nouveau domaine serve effectivement du trafic ;
+  le sous-domaine `*.workers.dev` continue de fonctionner en parallèle
+  entre-temps.
+  En parallèle : premier vrai test de paiement Stripe en live confirmé
+  techniquement fonctionnel (Checkout Session créée avec succès, compte
+  `Mindset-Red` / `acct_1TdBzLKI826s6EYV`, clé nommée
+  "Mindset-CTX-Github") — la session a expiré impayée (carte vide ce
+  jour-là), donc la boucle complète (vrai paiement encaissé) reste à
+  valider, mais l'infrastructure elle-même est confirmée opérationnelle.
