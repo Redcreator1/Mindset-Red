@@ -9,11 +9,17 @@ compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
 # CTX_BASE_URL must be an absolute URL — Stripe rejects relative
-# success_url/cancel_url values on Checkout Sessions. Confirmed via the
-# first successful deploy's *.workers.dev subdomain; update this if you
-# bind a custom domain instead.
+# success_url/cancel_url values on Checkout Sessions.
 [vars]
 CTX_BASE_URL = "https://mindsetctx.com"
+
+# The Custom Domain (mindsetctx.com) is configured in the Cloudflare
+# dashboard, so the technical *.workers.dev subdomain is no longer needed —
+# turned off here rather than left running alongside the real domain we
+# paid for. src/worker/index.ts still redirects it to CTX_BASE_URL as a
+# harmless backstop in case it's ever re-enabled, but Cloudflare won't route
+# requests to it at all while this is false.
+workers_dev = false
 
 # KV namespace holding tenants + daily usage counters.
 # Created out-of-band once (via the Cloudflare dashboard or MCP connector).

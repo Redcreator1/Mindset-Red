@@ -49,8 +49,14 @@ chemins possibles :
 
 ## Ce qui ne change pas
 
-- Le sous-domaine technique `*.workers.dev` continue de fonctionner en
-  parallèle par défaut (Cloudflare ne le désactive pas) — utile comme filet
-  de sécurité pendant la transition.
 - Aucune donnée (tenants, mémoire) ne bouge : c'est le même Worker, la même
   KV namespace, juste une nouvelle porte d'entrée DNS.
+
+## Le sous-domaine `*.workers.dev` est désactivé
+
+Une fois le Custom Domain en place, `workers_dev = false` dans
+`wrangler.toml` coupe complètement le sous-domaine technique
+`mindset-ctx.mindset2026.workers.dev` — Cloudflare ne route plus rien vers
+le Worker via cette URL. Le domaine payé est le seul point d'entrée public ;
+`src/worker/index.ts` garde quand même la redirection 301 vers
+`CTX_BASE_URL` en filet de sécurité si ce paramètre était un jour réactivé.

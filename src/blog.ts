@@ -95,6 +95,59 @@ function featuresSvg(): string {
 
 const POSTS: BlogPost[] = [
   {
+    slug: "claude-md-vs-agents-md",
+    title: "CLAUDE.md vs AGENTS.md : quelle différence, et faut-il les deux ?",
+    date: "2026-07-17",
+    excerpt:
+      "Deux fichiers, deux écosystèmes d'agents IA, une même idée : donner du contexte projet avant que l'agent ne commence à coder. Voici ce qui les distingue et pourquoi la plupart des équipes finissent par maintenir les deux.",
+    bodyHtml: `
+<p>Ouvrez un repo qui utilise des agents IA aujourd'hui et vous tomberez probablement
+sur l'un de ces deux fichiers à la racine : <code>CLAUDE.md</code> ou <code>AGENTS.md</code>.
+Parfois les deux. La question revient souvent : est-ce redondant ?</p>
+
+<h2>CLAUDE.md — le format de Claude Code</h2>
+<p><code>CLAUDE.md</code> est le fichier de contexte lu automatiquement par
+<strong>Claude Code</strong> (le CLI d'Anthropic) à chaque session : conventions de
+code, commandes de build/test, architecture du repo, règles spécifiques à l'équipe.
+C'est un fichier Markdown libre — pas de schéma imposé — que Claude Code charge et
+traite comme une instruction système prioritaire.</p>
+
+<h2>AGENTS.md — le format ouvert, multi-outils</h2>
+<p><code>AGENTS.md</code> vise la même idée mais en <strong>format ouvert</strong>,
+adopté par plusieurs outils (Cursor, Aider, et d'autres agents de code) qui ne sont
+pas liés à un seul fournisseur. L'objectif : un seul fichier de contexte lisible par
+n'importe quel agent qui respecte la convention, sans dépendre d'un outil précis.</p>
+
+<h2>Pourquoi pas un seul fichier pour les deux ?</h2>
+<p>En théorie, un contenu quasi identique suffirait aux deux. En pratique, deux raisons
+poussent à les garder distincts :</p>
+<ul>
+  <li><strong>Priorité de lecture</strong> — certains outils lisent un fichier avant
+  l'autre, ou ignorent celui qu'ils ne reconnaissent pas ; dupliquer garantit que
+  chaque agent trouve son format attendu sans devoir deviner.</li>
+  <li><strong>Dérive silencieuse</strong> — si un seul des deux fichiers est mis à jour
+  après un changement d'architecture, l'agent qui lit l'autre travaille sur une
+  version obsolète du projet sans que personne ne s'en aperçoive avant un bug ou une
+  review ratée.</li>
+</ul>
+
+<p>Le vrai problème n'est donc pas "lequel choisir", mais <strong>comment garder les
+deux synchronisés</strong> au fil des commits — sans que ce soit une tâche manuelle de
+plus que l'équipe oublie de faire.</p>
+
+<h2>C'est exactement ce que fait mindset-ctx</h2>
+<p>mindset-ctx génère <code>CLAUDE.md</code> et <code>AGENTS.md</code> à partir de la
+même analyse du repo, et les régénère à chaque push structurant — pas de copier-coller
+manuel entre les deux, pas de fichier qui prend du retard sur l'autre.</p>
+
+<pre>npm install -g mindset-ctx
+ctx generate .</pre>
+
+<p>Un seul run, deux fichiers de contexte à jour, quel que soit l'agent branché dessus.
+Open source, sur GitHub : <a href="${REPO_URL}">${REPO_URL.replace("https://", "")}</a></p>
+`,
+  },
+  {
     slug: "infrastructure-de-contexte-pour-agents-ia",
     title: "mindset-ctx — l'infrastructure de contexte pour agents IA",
     date: "2026-07-15",

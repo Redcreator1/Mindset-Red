@@ -1,6 +1,7 @@
 import type { MemoryRecord } from "./types.js";
 import { scoreBM25 } from "./memory.js";
 import { embedTexts, loadVectors, rankBySimilarity, type EmbeddingOptions } from "./embeddings.js";
+import { rerank } from "./rank.js";
 
 /**
  * Hybrid retrieval: fuse the lexical (BM25) and semantic (embeddings) rankings
@@ -77,15 +78,20 @@ export async function hybridSearch(
   const vectors = loadVectors(root);
   if (vectors.size === 0) {
     // No semantic index — degrade to lexical-only, still shaped as HybridResult.
-    return lexical.slice(0, limit).map((record, i) => ({
+    // Reranked over the full candidate pool (not pre-truncated to `limit`) so
+    // a title/recency boost can still surface something RRF alone ranked
+    // just outside the cutoff.
+    const asHybrid = lexical.map((record, i) => ({
       record,
       score: 1 / (RRF_K + i + 1),
       lexicalRank: i + 1,
       semanticRank: null,
     }));
+    return rerank(asHybrid, query).slice(0, limit);
   }
 
   const [queryVector] = await embedTexts([query], opts);
   const semantic = rankBySimilarity(records, vectors, queryVector, records.length);
-  return reciprocalRankFusion(lexical, semantic, limit);
+  const fused = reciprocalRankFusion(lexical, semantic, records.length);
+  return rerank(fused, query).slice(0, limit);
 }

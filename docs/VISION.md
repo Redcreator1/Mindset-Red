@@ -336,6 +336,140 @@ personne ; fournisseur de tout le monde.
   auth-d'abord/JSON existant, inchangé. 11 nouveaux tests (favicon,
   robots.txt, sitemap, 404 stylée, et surtout le test de non-régression
   401→404 sur les deux runtimes). Version 0.22.0.
+- **15/07/2026** — Demande explicite de passer sur "le lourd" après avoir
+  écarté Slack/Linear/Notion (jugés "petits trucs" par l'utilisateur, pas
+  bloqués sur l'argent mais reportés par choix). Confirmé via question :
+  "le lourd" = **Rank**, la Phase 4 ("Moat technique") de la vision. Attaqué
+  sous contrainte de temps réelle (limite de 5h Anthropic annoncée par
+  l'utilisateur, session à reprendre après).
+  Livré un **v0 honnête** plutôt qu'une promesse non tenue : `src/rank.ts`
+  est un reranker linéaire (pas un modèle entraîné) au-dessus de la fusion
+  RRF déjà en place — poids réglés à la main sur trois signaux (accord
+  lexical+sémantique, correspondance titre/requête, fraîcheur), documentés
+  comme point de départ explicitement destiné à être remplacé par des poids
+  **appris** une fois qu'il existe un vrai jeu de données de pertinence
+  (retours d'usage réels — clics, pouce haut/bas) et un budget
+  d'entraînement. Ni l'un ni l'autre ne peut se construire dans cette
+  session : la donnée de feedback n'existe pas encore (le produit vient
+  tout juste d'avoir des vrais visiteurs), et l'entraînement demande le
+  budget de "quelques milliers de $" déjà noté plus haut dans ce document
+  — précisément ce qu'on a mis de côté aujourd'hui ("on travaille pas avec
+  l'argent"). Branché directement dans `hybridSearch` (`hybrid.ts`) : la
+  fusion RRF tourne maintenant sur le pool complet de candidats plutôt que
+  d'être tronquée à `limit` avant reranking, pour que le reranker puisse
+  faire remonter un résultat que RRF seul aurait laissé juste sous la
+  coupure. 5 nouveaux tests unitaires sur `rank.ts` (correspondance titre,
+  fraîcheur, bonus double-moteur, date invalide non bloquante, tri complet
+  sans perte ni doublon) + suite existante (112 tests) toujours verte —
+  117 au total. Version 0.23.0.
+- **15/07/2026** — Suite immédiate : l'utilisateur propose d'aller plus loin
+  que Rank v0 — entraîner un vrai modèle sur un T4 Colab gratuit (donc sans
+  carte bancaire, compatible avec la contrainte du jour), et le brancher en
+  prod. Corrigé une intuition erronée en passant : aucune restriction ne
+  m'empêche d'écrire du vrai code d'entraînement/fine-tuning pour un
+  utilisateur — les limites rencontrées sont d'infrastructure (pas de GPU
+  ni d'accès à Colab depuis ce sandbox), pas une politique contre les
+  "vrais modèles". Vérifié par `curl` : huggingface.co est bloqué par le
+  proxy du sandbox (403 CONNECT tunnel failed) — même catégorie de blocage
+  que JetBrains plus tôt cette session. Question posée à l'utilisateur sur
+  comment gérer le déploiement, puisque Cloudflare Workers (notre prod) n'a
+  pas de GPU et ne peut pas exécuter d'inférence neuronale sans passer par
+  un service payant (Workers AI ou hébergement externe) — ce qui aurait
+  reproduit la contrainte carte-bancaire plus loin dans le pipeline.
+  **Réponse : "Runtime Node uniquement"** — le modèle entraîné tourne
+  seulement sur `server.ts` (self-hosted, gratuit), le Worker Cloudflare
+  garde Rank v0 heuristique. Écart de parité assumé et documenté, pas
+  masqué.
+  Livré `src/rank-ml.ts` : charge un cross-encoder MS MARCO fine-tuné
+  **depuis un dossier local** (`CTX_RANK_ML_MODEL_DIR`), zéro appel réseau
+  au runtime — évite complètement le blocage HuggingFace puisque
+  l'inférence ne dépend que de fichiers déjà sur disque, exportés par
+  l'utilisateur lui-même via `notebooks/train_rank_ml.py` (à exécuter dans
+  Colab, qui a un accès réseau complet, pas ici). Repli automatique vers
+  Rank v0 si le dossier est absent ou le chargement échoue — jamais de
+  crash serveur. `@xenova/transformers` ajouté en `optionalDependencies`
+  (pas `dependencies`) après avoir découvert que son installation échoue
+  ici aussi : elle dépend de `sharp`, dont le binaire natif se télécharge
+  depuis GitHub Releases — bloqué par le même proxy (403). En
+  `optionalDependencies`, `npm install` se termine proprement (le paquet
+  est silencieusement ignoré) au lieu d'échouer entièrement.
+  Honnêteté sur la limite de ce qui a pu être vérifié : `mlRerank` (le
+  blend de score) est testé unitairement (6 tests, reranker simulé,
+  déterministe) — sa logique est réelle et vérifiée. Le câblage du pipeline
+  `@xenova/transformers` dans `getMlReranker` est écrit contre l'API
+  documentée de cette librairie mais n'a jamais pu tourner de bout en bout
+  ici : aucun poids de modèle n'a jamais été disponible à charger. À
+  vérifier par l'utilisateur après avoir exécuté le notebook.
+  `npm audit` signale une vulnérabilité critique (`protobufjs`, via la
+  chaîne `onnxruntime-web` d'`@xenova/transformers`, non corrigée dans
+  aucune version 2.x publiée) — documentée et acceptée plutôt que cachée :
+  le seul contenu jamais désérialisé est un modèle que l'opérateur a
+  lui-même exporté, jamais une entrée réseau non fiable.
+  6 nouveaux tests (`rank-ml.test.ts`) + suite existante (117 tests)
+  toujours verte — 123 au total. Version 0.24.0.
+- **15/07/2026** — L'utilisateur a réellement exécuté `notebooks/train_rank_ml.py`
+  dans Colab (cellules 1 à 4 : installation, upload de `memory.jsonl` généré
+  ici même via `ctx index .`, construction des 128 paires, fine-tuning —
+  toutes passées sans erreur). La cellule 5 (export) a échoué en vrai :
+  `git clone .../xenova/transformers.js` réussissait, mais
+  `scripts/requirements.txt` et `scripts/convert.py` n'existaient plus
+  ("No such file or directory", "No module named scripts.convert").
+  Exactement la limite que j'avais signalée honnêtement dans le README du
+  notebook ("à vérifier, non exécuté ici faute d'accès réseau à
+  huggingface.co") — confirmée fausse par une exécution réelle plutôt que
+  découverte par moi-même en amont.
+  Diagnostiqué en lisant le vrai état actuel du projet (raw.githubusercontent.com
+  est accessible depuis ce sandbox, contrairement à huggingface.co et à
+  l'API GitHub pour des repos hors-scope) : le projet a été adopté par
+  l'organisation GitHub `huggingface`, republié en npm sous
+  `@huggingface/transformers` (v4.2.0) au lieu de l'ancien
+  `@xenova/transformers` (legacy, abandonné), et son outil de conversion
+  maison `scripts/convert.py` a été remplacé par l'exporteur ONNX standard
+  `optimum-onnx` (`pip install "optimum-onnx[onnxruntime]"` puis
+  `optimum-cli export onnx --task text-classification`).
+  Corrigé avant merge : `src/rank-ml.ts` et `package.json` pointent
+  maintenant vers `@huggingface/transformers` — la forme d'appel
+  (`AutoTokenizer`/`AutoModelForSequenceClassification` avec l'option
+  `text_pair` du tokenizer, pas le helper `pipeline()`) reste identique,
+  reconfirmée contre les vrais `.d.ts` de la 4.2.0 via `npm pack` exactement
+  comme pour le fix CI précédent. Le notebook exporte maintenant vers
+  `rank_ml_model/onnx/model.onnx` (sous-dossier `onnx/` recréé à la main
+  après l'export `optimum-cli`, pour correspondre à la convention
+  `subfolder: "onnx"` que `@huggingface/transformers` attend par défaut).
+  Aucun changement de test nécessaire (la correction ne touche que le
+  chemin non exercé par les tests, par construction). Toujours 123/123.
+  Bonus découvert en relançant `npm install` : `@huggingface/transformers`
+  s'installe entièrement ici (contrairement à `@xenova/transformers`, dont
+  le `sharp` transitif échouait sur le proxy) et `npm audit` passe de 4
+  vulnérabilités (1 critique) à 0 — la vulnérabilité `protobufjs` documentée
+  dans l'entrée précédente disparaît avec le changement de paquet.
+- **16/07/2026** — Deuxième panne réelle trouvée en continuant l'exécution du
+  notebook : la Cellule 5 corrigée échouait maintenant sur `mv: cannot stat
+  'rank_ml_model/model.onnx'` — `optimum-cli export onnx` n'avait rien
+  produit. Diagnostiqué pas à pas avec l'utilisateur (`!find / -iname
+  "*fine_tuned*"` : aucun résultat nulle part) : le dossier `fine_tuned_model`
+  que la Cellule 4 devait créer n'existait tout simplement pas, alors même
+  que la barre de progression de l'entraînement s'affichait normalement.
+  Vérifié contre le vrai code/doc actuel de `sentence-transformers` (comme
+  pour `optimum`/`transformers.js` juste avant) plutôt que re-deviner :
+  le paquet est passé en v5.x, qui remplace `CrossEncoder.fit(train_dataloader=
+  ..., output_path=...)` (API pré-5.x utilisée dans la version précédente du
+  notebook) par un `CrossEncoderTrainer` de style HF Trainer — celui-ci
+  n'écrit **pas** automatiquement sur `output_path` ; il faut appeler
+  explicitement `model.save_pretrained(...)` après `trainer.train()`. Le nom
+  du modèle de base était aussi légèrement faux (`ms-marco-MiniLM-L-6-v2`
+  avec tiret, alors que le vrai identifiant confirmé dans la doc actuelle est
+  `ms-marco-MiniLM-L6-v2`, sans tiret).
+  Cellules 3 et 4 réécrites pour utiliser l'API réelle et actuelle :
+  `datasets.Dataset` à la place d'une liste de tuples, `CrossEncoderTrainer`
+  + `BinaryCrossEntropyLoss` (adaptée à des labels 0/1 sur une seule sortie —
+  exactement notre cas) à la place de `.fit()`, et un `model.save_pretrained
+  ("fine_tuned_model")` explicite avant le print de confirmation.
+  Deux corrections réelles en cascade sur ce notebook ce soir (paquet ONNX,
+  puis API d'entraînement) — chacune trouvée en le faisant réellement tourner
+  avec l'utilisateur et vérifiée contre la doc actuelle avant d'être proposée,
+  pas depuis la mémoire. Aucun changement côté `src/` — uniquement
+  `notebooks/train_rank_ml.py`, toujours 123/123 côté TypeScript.
 - **17/07/2026** — Domaine acheté : pas `mindset-ctx.dev` finalement, mais
   **`mindsetctx.com`** (10,46 $/an, via Cloudflare Registrar directement —
   déjà géré par Cloudflare, zéro transfert de nameservers nécessaire).
@@ -372,3 +506,16 @@ personne ; fournisseur de tout le monde.
   nouveaux tests (redirection prod + preview, pas de boucle sans
   CTX_BASE_URL, pas de redirection sur le domaine déjà canonique) — 116/116
   au total.
+- **17/07/2026** — Demande explicite de retirer complètement le nom
+  "workers" maintenant que le vrai domaine est payé et configuré : plutôt
+  que de laisser `*.workers.dev` tourner en parallèle indéfiniment (ce que
+  la redirection 301 de la session précédente permettait déjà, mais sans
+  couper l'ancienne URL), ajouté `workers_dev = false` dans `wrangler.toml`
+  — Cloudflare ne route plus du tout ce sous-domaine vers le Worker une
+  fois le Custom Domain en place. `docs/DOMAIN-SETUP.md` mis à jour en
+  conséquence. La redirection 301 dans `src/worker/index.ts` reste en
+  place comme filet de sécurité (harmless si jamais réactivé), pas retirée.
+  Au passage : la branche Rank ML (PR #21, encore non mergée) avait été
+  créée avant la migration de domaine — un rebase sur `main` était
+  nécessaire pour ne pas régresser `CTX_BASE_URL` vers l'ancienne URL
+  `*.workers.dev` au prochain merge.

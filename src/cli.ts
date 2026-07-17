@@ -18,7 +18,7 @@ import { loadPriceMap, type PlanId } from "./billing.js";
 import { buildAppManifest, getInstallationToken, installUrlHint } from "./githubapp.js";
 import { bootstrapStripePlans, createCheckoutSession, ensureStripeWebhook, newTenantKey, priceForPlan } from "./checkout.js";
 
-const VERSION = "0.22.0";
+const VERSION = "0.24.0";
 
 const USAGE = `mindset-ctx — Context-as-a-Service for your repos
 
@@ -60,7 +60,13 @@ Usage:
                                --webhook-secret (or CTX_WEBHOOK_SECRET) enables
                                the GitHub webhook + App routes; --stripe-secret
                                (or CTX_STRIPE_SECRET, with STRIPE_PRICE_MAP)
-                               enables POST /v1/stripe/webhook billing
+                               enables POST /v1/stripe/webhook billing;
+                               --rank-ml-model-dir (or CTX_RANK_ML_MODEL_DIR)
+                               points at a Rank ML cross-encoder exported by
+                               notebooks/train_rank_ml.py, to rerank
+                               mode=hybrid results with a real trained model
+                               instead of just Rank v0's heuristic (Node only —
+                               see src/rank-ml.ts for why)
   ctx app manifest [--base-url URL]
                                Print the GitHub App manifest (JSON) for
                                one-click App creation
@@ -245,11 +251,14 @@ function cmdServe(argv: string[]): void {
   const appBaseUrl = arg("--base-url", argv) ?? process.env.CTX_BASE_URL;
   const tenantsFile = arg("--tenants", argv) ?? process.env.CTX_TENANTS;
   const tenantStore = tenantsFile ? TenantStore.fromFile(resolve(tenantsFile)) : undefined;
+  // Rank ML (Node-only — see rank-ml.ts): points at a local directory
+  // exported by notebooks/train_rank_ml.py. Unset or missing: Rank v0 only.
+  const rankMlModelDir = arg("--rank-ml-model-dir", argv) ?? process.env.CTX_RANK_ML_MODEL_DIR;
   const paths = positionals(argv).map((p) => resolve(p));
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl, rankMlModelDir }).listen(port, () => {
     const names = Object.keys(repos);
     const authLabel = tenantStore ? ` [${tenantStore.all().length} tenant(s)]` : apiKey ? " [api-key required]" : "";
     const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");
