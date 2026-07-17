@@ -433,7 +433,22 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
           sendJson(res, 502, { error: `stripe lookup ${lookup.status}` });
           return;
         }
-        const data = (await lookup.json()) as { client_reference_id?: string };
+        const data = (await lookup.json()) as { client_reference_id?: string; payment_status?: string; status?: string };
+        // The session id is visible in the Checkout URL before paying, so
+        // anyone can abandon payment and hit this URL directly. Only hand the
+        // key over (and claim "payment validated") once Stripe says the
+        // session is paid — same gate as the Worker (worker/index.ts).
+        if (data.payment_status !== "paid" && data.status !== "complete") {
+          res.writeHead(402, { "content-type": "text/html; charset=utf-8" });
+          res.end(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Paiement non finalisé — mindset-ctx</title></head>
+<body style="margin:0;font:15px system-ui;background:#0b1220;color:#e2e8f0;padding:48px 32px">
+<main style="max-width:640px;margin:0 auto;background:#111a2e;border:1px solid #1e293b;border-radius:14px;padding:32px">
+<h1 style="margin:0 0 16px;font-size:22px">⏳ Paiement non finalisé</h1>
+<p>Cette session de paiement n'a pas encore été réglée. Si vous venez de payer, patientez quelques secondes puis rafraîchissez cette page.</p>
+<p><a href="${opts.appBaseUrl ?? ""}/pricing" style="color:#60a5fa">Retour aux tarifs</a></p>
+</main></body></html>`);
+          return;
+        }
         const tenantKey = data.client_reference_id ?? "(clé introuvable — contactez le support)";
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(renderSuccess(tenantKey));
@@ -681,7 +696,9 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     const webhookMatch = path.match(/^\/v1\/repos\/([^/]+)\/webhook$/) ?? (soleName && path === "/v1/webhook" ? [path, soleName] : null);
     if (webhookMatch) {
       const repoName = decodeURIComponent(webhookMatch[1]);
-      const root = repos[repoName];
+      // hasOwn: plain indexing would resolve inherited names ("__proto__",
+      // "constructor") to truthy objects and crash deeper in with a 500.
+      const root = Object.hasOwn(repos, repoName) ? repos[repoName] : undefined;
       if (!root) {
         sendJson(res, 404, { error: `unknown repo '${repoName}'`, repos: names });
         return;
@@ -922,7 +939,8 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     const repoMatch = path.match(/^\/v1\/repos\/([^/]+)\/(.+)$/);
     if (repoMatch) {
       const repoName = decodeURIComponent(repoMatch[1]);
-      const root = repos[repoName];
+      // hasOwn: same reason as the webhook route above.
+      const root = Object.hasOwn(repos, repoName) ? repos[repoName] : undefined;
       if (!root) {
         sendJson(res, 404, { error: `unknown repo '${repoName}'`, repos: names });
         return;

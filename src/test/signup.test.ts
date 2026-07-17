@@ -17,8 +17,8 @@ import { renderPricing } from "../pricing.js";
  * search + create). The whole real interaction is over plain fetch, so a
  * plain http.Server replacement is sufficient.
  */
-function startStripeMock(): Promise<{ baseURL: string; server: Server; state: { products: string[]; prices: Record<string, unknown>[]; sessions: Record<string, { client_reference_id: string }> } }> {
-  const state = { products: [] as string[], prices: [] as Record<string, unknown>[], sessions: {} as Record<string, { client_reference_id: string }> };
+function startStripeMock(): Promise<{ baseURL: string; server: Server; state: { products: string[]; prices: Record<string, unknown>[]; sessions: Record<string, { client_reference_id: string; payment_status: string }> } }> {
+  const state = { products: [] as string[], prices: [] as Record<string, unknown>[], sessions: {} as Record<string, { client_reference_id: string; payment_status: string }> };
   const server = createServer(async (req, res) => {
     const chunks: Buffer[] = [];
     for await (const c of req) chunks.push(c as Buffer);
@@ -33,7 +33,9 @@ function startStripeMock(): Promise<{ baseURL: string; server: Server; state: { 
       const params = new URLSearchParams(body);
       const id = `cs_test_${Math.random().toString(36).slice(2, 10)}`;
       const clientRef = params.get("client_reference_id") ?? "";
-      state.sessions[id] = { client_reference_id: clientRef };
+      // A freshly created Checkout Session is not paid — the test flips
+      // payment_status to "paid" itself to simulate the buyer completing it.
+      state.sessions[id] = { client_reference_id: clientRef, payment_status: "unpaid" };
       return send(200, { id, url: `https://checkout.stripe.com/test/${id}` });
     }
     // Checkout retrieve.
@@ -201,7 +203,17 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(sessionIds.length, 1);
     assert.equal(stripe.state.sessions[sessionIds[0]].client_reference_id, tenant.key);
 
-    // The success page fetches Stripe and shows the tenant key exactly once.
+    // Before payment, the success page refuses to hand over the key — the
+    // session id is visible in the Checkout URL pre-payment, so anyone could
+    // abandon payment and open this URL directly (same gate as the Worker).
+    const unpaid = await fetch(`${base}/v1/signup/success?session_id=${sessionIds[0]}`);
+    assert.equal(unpaid.status, 402);
+    const unpaidHtml = await unpaid.text();
+    assert.ok(!unpaidHtml.includes(tenant.key), "key must not leak before payment");
+    assert.match(unpaidHtml, /Paiement non finalisé/);
+
+    // The buyer completes payment → the success page shows the key.
+    stripe.state.sessions[sessionIds[0]].payment_status = "paid";
     const success = await fetch(`${base}/v1/signup/success?session_id=${sessionIds[0]}`);
     assert.equal(success.status, 200);
     const html = await success.text();

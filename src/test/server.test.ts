@@ -53,6 +53,14 @@ test("multi-repo server routes per repo and lists them", async () => {
     const unknown = await fetch(`${base}/v1/repos/gamma/analysis`);
     assert.equal(unknown.status, 404);
 
+    // Inherited object-prototype names must 404 like any unknown repo —
+    // plain indexing would resolve them ("__proto__" → Object.prototype,
+    // truthy) and crash deeper in with a 500.
+    for (const name of ["__proto__", "constructor"]) {
+      const inherited = await fetch(`${base}/v1/repos/${name}/analysis`);
+      assert.equal(inherited.status, 404, `'${name}' must be a plain unknown-repo 404`);
+    }
+
     const noShortcut = await fetch(`${base}/v1/analysis`);
     assert.equal(noShortcut.status, 404, "unprefixed shortcuts are single-repo only");
   } finally {
