@@ -552,3 +552,24 @@ personne ; fournisseur de tout le monde.
   reste à trancher avant l'acquisition, volontairement pas résolue ce soir
   pour rester strictement dans le périmètre demandé ("corriger la
   promesse", pas construire la passerelle).
+- **18/07/2026** — `npm audit` a signalé 3 vulnérabilités haute sévérité :
+  `adm-zip` < 0.6.0 ("un ZIP conçu malicieusement déclenche une allocation
+  de 4 Go de mémoire", GHSA-xcpc-8h2w-3j85), tirée en transitif par
+  `onnxruntime-node` ← `@huggingface/transformers` (Rank ML). Ceci contredit
+  l'entrée du 15-16/07 qui annonçait 0 vulnérabilité après le passage à ce
+  paquet — l'avis `adm-zip` a manifestement été publié depuis. Vérifié
+  qu'aucun correctif amont n'existe : la dernière version publiée
+  (4.2.0, déjà celle installée) épingle exactement `onnxruntime-node@1.24.3`,
+  la même version vulnérable ; le seul correctif que `npm audit fix --force`
+  propose imposerait un retour à la 3.8.1, une API différente de celle sur
+  laquelle `rank-ml.ts` est écrit, jamais testée. Le chemin de code
+  vulnérable (traiter un ZIP piégé) n'est jamais atteint par notre propre
+  logique — interne à l'empaquetage d'`onnxruntime-node`, jamais alimenté
+  par une entrée utilisateur ici. Puisque Rank ML est en pause et que le
+  paquet était déjà en `optionalDependencies` (donc non requis pour que le
+  produit tourne), retiré entièrement de `package.json` plutôt que de
+  forcer un downgrade risqué et non vérifié — `npm audit` repasse à 0.
+  À rajouter (idéalement une version au-delà de 4.2.0, patchée) quand Rank
+  ML redevient une priorité. Aucun test ne dépendait du paquet réellement
+  installé (`getMlReranker` retourne `null` avant même d'essayer de
+  l'importer dès que le dossier modèle est absent) — 130/130 toujours vert.
