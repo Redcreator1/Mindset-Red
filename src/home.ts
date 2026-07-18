@@ -146,8 +146,9 @@ export function renderHome(baseUrl?: string): string {
 <section class="trust">
   <p>
     <strong>Le mode self-hosted est gratuit et illimité.</strong> Il lit le clone
-    local de votre repo — votre code privé ne quitte jamais votre machine. Le mode
-    hébergé (dashboard, quotas, recherche sémantique) est ce qui est payant.
+    local de votre repo — votre code privé ne quitte jamais votre machine, et c'est
+    lui qui fait tout le travail (analyse, recherche, MCP), sur tous les plans. Le
+    mode hébergé (dashboard, suivi de quota, facturation) est ce qui est payant.
   </p>
 </section>
 

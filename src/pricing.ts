@@ -18,11 +18,19 @@ interface PricingCard {
   primary: boolean;
 }
 
+// Feature lists describe only what each plan mechanically delivers today —
+// no aspirational copy. The hosted Worker (mindsetctx.com) is billing +
+// dashboard + quota only: it has no route to analyze a repo, search memory,
+// or serve MCP (Cloudflare Workers can't run git or hold a repo clone). That
+// heavy lifting always runs in the self-hosted CLI, free and unlimited on
+// every plan including Free — a paying plan buys a hosted account (key,
+// dashboard, tracked quota) and, on Team, pooled multi-seat billing. See
+// docs/VISION.md's 18/07/2026 entry for why this was rewritten.
 const CARDS: PricingCard[] = [
-  { plan: "free", price: "0 €", features: ["1 repo", "200 requêtes/jour", "Self-hosted illimité", "BM25 + MCP local"], cta: "Utiliser gratuitement", primary: false },
-  { plan: "pro", price: "19 €", interval: "mois", features: ["5 repos", "5 000 requêtes/jour", "Recherche sémantique", "Webhooks GitHub", "Dashboard hébergé"], cta: "Passer Pro", primary: true },
-  { plan: "team", price: "99 €", interval: "mois", features: ["Repos illimités", "50 000 requêtes/jour", "Multi-tenants", "Mémoire d'équipe partagée", "Support prioritaire"], cta: "Passer Team", primary: false },
-  { plan: "enterprise", price: "Sur devis", features: ["Instance dédiée / VPC", "Quotas illimités", "SLA", "SSO (à venir)"], cta: "Nous contacter", primary: false },
+  { plan: "free", price: "0 €", features: ["1 repo", "200 requêtes/jour (compte hébergé)", "Self-hosted illimité", "BM25 + MCP local"], cta: "Utiliser gratuitement", primary: false },
+  { plan: "pro", price: "19 €", interval: "mois", features: ["5 000 requêtes/jour (compte hébergé)", "Dashboard hébergé : quotas & usage en temps réel", "CLI self-hosted illimitée — génération, recherche, MCP"], cta: "Passer Pro", primary: true },
+  { plan: "team", price: "99 €", interval: "mois", features: ["50 000 requêtes/jour (quota partagé par l'équipe)", "Multi-sièges : invitez votre équipe, rôles owner/member", "Dashboard hébergé scopé à l'équipe", "CLI self-hosted illimitée pour chaque membre"], cta: "Passer Team", primary: false },
+  { plan: "enterprise", price: "Sur devis", features: ["Instance dédiée / VPC (Docker, docs/DEPLOYMENT.md)", "Quotas illimités", "SLA à discuter", "SSO Entreprise (WorkOS AuthKit)"], cta: "Nous contacter", primary: false },
 ];
 
 function esc(s: string): string {
