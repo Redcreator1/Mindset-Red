@@ -519,3 +519,36 @@ personne ; fournisseur de tout le monde.
   créée avant la migration de domaine — un rebase sur `main` était
   nécessaire pour ne pas régresser `CTX_BASE_URL` vers l'ancienne URL
   `*.workers.dev` au prochain merge.
+- **18/07/2026** — Après le premier vrai paiement encaissé, l'utilisateur a
+  voulu utiliser le service comme un vrai client avant de partir à
+  l'acquisition. En relisant `src/worker/index.ts` pour préparer ce test,
+  découvert un vrai décalage entre la promesse marketing et ce que le Worker
+  hébergé livre réellement : `/pricing`, `README.md` et la page d'accueil
+  promettaient "recherche sémantique", "webhooks GitHub" et "mémoire
+  d'équipe partagée" comme fonctionnalités du plan hébergé Pro/Team — mais
+  le Worker n'a **aucune route** pour analyser un repo, indexer une mémoire
+  ou servir MCP (`/v1/repos/*`, `/v1/*/memory/search`, `/v1/*/webhook`
+  n'existent que sur `server.ts`, jamais sur `worker/index.ts` — Cloudflare
+  Workers ne peut ni cloner ni lire un dépôt git). Confirmé aussi que
+  `repoLimit`/`semantic` dans `billing.ts` sont des champs déclarés mais
+  jamais lus nulle part ailleurs — de la donnée morte, jamais branchée à une
+  vraie restriction. Un client payant Pro aujourd'hui reçoit un compte
+  hébergé (clé, dashboard, quota suivi) — pas d'analyse de repo hébergée ;
+  celle-ci tourne toujours en self-hosted (CLI), gratuite et illimitée sur
+  tous les plans. Risque identifié avant l'acquisition de vrais clients,
+  pas après : corrigé la promesse plutôt que le produit ce soir, sur
+  demande explicite ("on corrige la promesse marketing pour être honnête").
+  Réécrit `CARDS` (`pricing.ts`), la section "trust" de la page d'accueil
+  (`home.ts`) et l'encart "repo privé" du README pour ne décrire que ce qui
+  est mécaniquement vrai aujourd'hui : compte hébergé + dashboard + quota
+  payants, analyse/recherche/MCP toujours self-hosted et gratuits. Corrigé
+  au passage un deuxième décalage trouvé pendant la relecture : la carte
+  Enterprise affichait "SSO (à venir)" alors que le SSO WorkOS est livré et
+  fonctionne (v0.16) depuis plusieurs jours. Deux nouveaux tests
+  (`pricing.test.ts`) verrouillent ces claims pour empêcher une régression
+  silencieuse — 130 au total. La question ouverte (comment un client
+  hébergé profite réellement de la CLI self-hosted — aujourd'hui aucune
+  passerelle automatique entre la clé hébergée et une instance self-hosted)
+  reste à trancher avant l'acquisition, volontairement pas résolue ce soir
+  pour rester strictement dans le périmètre demandé ("corriger la
+  promesse", pas construire la passerelle).

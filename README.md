@@ -385,7 +385,10 @@ via l'API Stripe avec la clé déjà configurée — aucun accès au Dashboard
 requis) et colle le `CTX_STRIPE_SECRET` imprimé dans les secrets GitHub avant
 de relancer le déploiement.
 
-> **Repo privé, code sensible ?** Aucun code source ne quitte votre machine
-> par défaut : `ctx generate` / `index` / `serve` tournent en local. Le mode
-> hébergé (Worker) sert uniquement l'analyse structurée + les fichiers de
-> contexte déjà générés — jamais le code lui-même.
+> **Repo privé, code sensible ?** Aucun code source ne quitte jamais votre
+> machine : `ctx generate` / `index` / `serve` — l'analyse du repo, la
+> génération de contexte, la recherche mémoire et MCP — tournent toujours en
+> local, sur tous les plans, gratuits comme payants. Le mode hébergé (Worker)
+> ne fait que la facturation, le compte client et le tableau de bord de
+> quota ; il n'a aucune route pour analyser un repo ou servir du contexte
+> (Cloudflare Workers ne peut ni cloner ni lire un dépôt git).
