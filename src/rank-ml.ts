@@ -65,11 +65,14 @@ export async function getMlReranker(modelDir: string | undefined): Promise<MlRer
   if (cached?.modelDir === modelDir) return cached.reranker;
 
   try {
-    // @huggingface/transformers is an optionalDependency (package.json) —
-    // its install can fail on platforms that can't fetch its native
-    // onnxruntime/sharp binaries, so its types aren't always resolvable.
-    // Falling back to Rank v0 in the catch below is the point of that
-    // optionality.
+    // @huggingface/transformers is no longer declared in package.json at
+    // all (removed 18/07/2026 — see docs/VISION.md: a transitive high-
+    // severity vuln in onnxruntime-node's adm-zip dependency, no upstream
+    // fix available yet, and Rank ML itself is parked). This dynamic
+    // import will fail on any machine until it's reinstalled, which is
+    // exactly what the catch below is for — falls back to Rank v0. Add it
+    // back as an optionalDependency (^4.2.0 or later, once patched) when
+    // Rank ML work resumes.
     // @ts-ignore
     const { AutoTokenizer, AutoModelForSequenceClassification, env } = await import("@huggingface/transformers");
     // Local files only — never fetch from the HuggingFace hub at request

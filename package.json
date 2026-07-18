@@ -44,8 +44,5 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0"
-  },
-  "optionalDependencies": {
-    "@huggingface/transformers": "^4.2.0"
   }
 }
