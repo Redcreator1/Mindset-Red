@@ -619,3 +619,25 @@ personne ; fournisseur de tout le monde.
   (`support.test.ts` + routes configurée/non-configurée sur les deux
   runtimes, avec une vraie API Anthropic mockée plutôt que devinée) —
   142/142.
+- **19/07/2026** — Demande explicite de préparer le référencement dans les
+  annuaires MCP (awesome-mcp-servers, registre officiel, Smithery, mcp.so,
+  glama.ai). Audit d'abord : le serveur MCP existe déjà et fonctionne
+  (`src/mcp.ts`, trois outils `get_context`/`search_memory`/`analyze_repo`,
+  documenté dans le README), le paquet est déjà publié sur npm depuis la
+  v0.18 — mais `package.json` ne contenait aucun mot-clé "mcp" (invisible
+  à la recherche npm), il n'y avait pas de `llms.txt`, et le README
+  affirmait encore à tort que mindset-ctx n'était "pas encore sur npm"
+  (phrase écrite avant la v0.18, jamais corrigée). Corrigé : mots-clés
+  `mcp`/`model-context-protocol`/`mcp-server`/`cli` ajoutés ; `GET
+  /llms.txt` livré (`src/seo.ts`), même traitement que `robots.txt`/
+  `sitemap.xml` sur les deux runtimes — une carte Markdown du site
+  (résumé produit, dépôt GitHub, docs, tarifs, legal, blog), lue par les
+  agents/crawlers IA avant de parcourir le HTML. Contenu généré à partir
+  des mêmes sources que le sitemap (`blogPostsMeta()` ajouté à `blog.ts`
+  pour ne pas dupliquer les métadonnées des articles) — pas de texte
+  inventé. La soumission effective aux annuaires externes
+  (awesome-mcp-servers, registre MCP officiel, Smithery, mcp.so, glama.ai)
+  reste à faire par l'utilisateur : ce sont des PR sur des dépôts GitHub
+  tiers ou des formulaires web hors du scope GitHub de cette session —
+  cette session ne peut pas les soumettre à sa place. 2 nouveaux tests —
+  144/144.

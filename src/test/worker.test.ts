@@ -155,6 +155,14 @@ test("Worker: robots.txt and sitemap.xml are served for search engines", async (
   assert.match(await sitemap.text(), /<loc>https:\/\/ctx\.example\.com\/blog<\/loc>/);
 });
 
+test("Worker: llms.txt is served for AI agents/crawlers", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const res = await worker.fetch(new Request("https://ctx.example.com/llms.txt"), env);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("content-type"), "text/markdown; charset=utf-8");
+  assert.match(await res.text(), /^# mindset-ctx/);
+});
+
 test("Worker: an unknown page 404s with a styled page, not the 401 an unmatched path used to get from the auth gate", async () => {
   const env = { CTX_KV: new MemKV() };
   const res = await worker.fetch(new Request("https://ctx.example.com/this-page-does-not-exist"), env);

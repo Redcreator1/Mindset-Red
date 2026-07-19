@@ -260,6 +260,13 @@ export function blogSlugs(): string[] {
   return POSTS.map((p) => p.slug);
 }
 
+/** Slug/title/excerpt for every post, newest first — used by llms.txt without duplicating the post data. */
+export function blogPostsMeta(): { slug: string; title: string; excerpt: string }[] {
+  return [...POSTS]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .map(({ slug, title, excerpt }) => ({ slug, title, excerpt }));
+}
+
 /** List of posts, newest first. */
 export function renderBlogIndex(baseUrl?: string): string {
   const items = [...POSTS]

@@ -5,7 +5,7 @@ import { renderTerms, renderPrivacy } from "../legal.js";
 import { renderSupport, askSupportBot, SupportChatError, type SupportChatMessage } from "../support.js";
 import { ogImageBytes } from "../og-image.js";
 import { FAVICON_SVG } from "../favicon.js";
-import { renderRobotsTxt, renderSitemapXml } from "../seo.js";
+import { renderRobotsTxt, renderSitemapXml, renderLlmsTxt } from "../seo.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
 import { createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
@@ -146,6 +146,10 @@ export default {
 
     if (path === "/sitemap.xml") {
       return new Response(renderSitemapXml(baseUrl), { status: 200, headers: { "content-type": "application/xml; charset=utf-8" } });
+    }
+
+    if (path === "/llms.txt") {
+      return new Response(renderLlmsTxt(baseUrl), { status: 200, headers: { "content-type": "text/markdown; charset=utf-8" } });
     }
 
     if (path === "/blog") {

@@ -21,7 +21,7 @@ import { renderTerms, renderPrivacy } from "./legal.js";
 import { renderSupport, askSupportBot, SupportChatError, type SupportChatMessage } from "./support.js";
 import { ogImageBytes } from "./og-image.js";
 import { FAVICON_SVG } from "./favicon.js";
-import { renderRobotsTxt, renderSitemapXml } from "./seo.js";
+import { renderRobotsTxt, renderSitemapXml, renderLlmsTxt } from "./seo.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "./workos.js";
 import {
   buildClearSessionCookieHeader, buildClearStateCookieHeader, buildSessionCookieHeader, buildStateCookieHeader,
@@ -389,6 +389,13 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
       res.writeHead(200, { "content-type": "application/xml; charset=utf-8" });
       res.end(renderSitemapXml(base));
+      return;
+    }
+
+    if (path === "/llms.txt") {
+      const base = opts.appBaseUrl ?? `http://${req.headers.host ?? "localhost"}`;
+      res.writeHead(200, { "content-type": "text/markdown; charset=utf-8" });
+      res.end(renderLlmsTxt(base));
       return;
     }
 

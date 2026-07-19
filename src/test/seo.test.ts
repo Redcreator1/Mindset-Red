@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { renderRobotsTxt, renderSitemapXml } from "../seo.js";
+import { renderRobotsTxt, renderSitemapXml, renderLlmsTxt } from "../seo.js";
 import { render404 } from "../home.js";
 import { FAVICON_SVG } from "../favicon.js";
 
@@ -21,6 +21,17 @@ test("renderSitemapXml lists every static page and every blog post with absolute
     assert.match(xml, new RegExp(`<loc>https://ctx\\.example\\.com${path.replace("/", "\\/")}</loc>`));
   }
   assert.match(xml, /<loc>https:\/\/ctx\.example\.com\/blog\/infrastructure-de-contexte-pour-agents-ia<\/loc>/);
+});
+
+test("renderLlmsTxt is a markdown map of the site with absolute links and the MCP tools mentioned", () => {
+  const txt = renderLlmsTxt("https://ctx.example.com");
+  assert.match(txt, /^# mindset-ctx/);
+  assert.match(txt, /get_context/);
+  assert.match(txt, /search_memory/);
+  assert.match(txt, /analyze_repo/);
+  assert.match(txt, /\(https:\/\/github\.com\/Redcreator1\/Mindset-Red\)/);
+  assert.match(txt, /\(https:\/\/ctx\.example\.com\/pricing\)/);
+  assert.match(txt, /\(https:\/\/ctx\.example\.com\/blog\/infrastructure-de-contexte-pour-agents-ia\)/);
 });
 
 test("render404 is a real styled page, not a bare error string", () => {
