@@ -573,3 +573,22 @@ personne ; fournisseur de tout le monde.
   ML redevient une priorité. Aucun test ne dépendait du paquet réellement
   installé (`getMlReranker` retourne `null` avant même d'essayer de
   l'importer dès que le dossier modèle est absent) — 130/130 toujours vert.
+- **19/07/2026** — Avant l'acquisition de vrais clients, demande explicite de
+  couvrir deux risques identifiés la veille : aucune base légale (CGV,
+  confidentialité) et aucun canal de support. Deux décisions business
+  tranchées par l'utilisateur : remboursement à 14 jours (satisfait ou
+  remboursé) sur Pro/Team ; raison sociale et adresse volontairement
+  laissées en `[À COMPLÉTER]` dans les documents plutôt que d'inventer une
+  adresse — pas de fausse information dans un document légal.
+  Livré `src/legal.ts` : `/terms` et `/privacy`, publiques, même traitement
+  que `/docs`/`/blog` sur les deux runtimes. Contenu volontairement aligné
+  sur la distinction hébergé/self-hosted corrigée hier (le service hébergé
+  ne collecte jamais le code, ni les requêtes de recherche — seulement
+  compte, clé, plan, compteur d'usage). Sous-traitants réels listés
+  (Stripe, Cloudflare, WorkOS), pas une liste générique. `SUPPORT_EMAIL`
+  extrait de `pricing.ts` (l'adresse mailto Enterprise existante) vers
+  `home.ts`, réutilisé partout : pied de page du site, page de succès
+  après paiement, dashboard. Ajouté au sitemap. Ces pages sont un point de
+  départ solide, pas un avis juridique — à faire relire avant que le
+  volume de clients ne justifie le risque. 8 nouveaux tests
+  (`legal.test.ts` + routes sur les deux runtimes) — 134/134.

@@ -9,6 +9,9 @@
 
 export const REPO_URL = "https://github.com/Redcreator1/Mindset-Red";
 
+/** Shared support contact — same address already used for Enterprise inquiries on /pricing. */
+export const SUPPORT_EMAIL = "mindset22633@gmail.com";
+
 export function esc(s: string): string {
   return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 }
@@ -75,7 +78,8 @@ ${ogMeta(opts)}
 ${opts.body}
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
-  <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a>
+  <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a><br>
+  <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a> · <a href="mailto:${SUPPORT_EMAIL}">Support</a>
 </footer>
 </body></html>`;
 }

@@ -165,6 +165,15 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(missingPost.status, 404);
     assert.match(await missingPost.text(), /<!doctype html>/);
 
+    // /terms and /privacy render publicly, no auth required (tenant auth is
+    // configured on this server, same as the hosted Worker).
+    const terms = await fetch(`${base}/terms`);
+    assert.equal(terms.status, 200);
+    assert.match(await terms.text(), /14 jours/);
+    const privacy = await fetch(`${base}/privacy`);
+    assert.equal(privacy.status, 200);
+    assert.match(await privacy.text(), /Stripe/);
+
     // /favicon.svg is served; the legacy /favicon.ico request redirects to it.
     const favicon = await fetch(`${base}/favicon.svg`);
     assert.equal(favicon.status, 200);
