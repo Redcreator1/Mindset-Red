@@ -204,6 +204,11 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(sitemap.headers.get("content-type"), "application/xml; charset=utf-8");
     assert.match(await sitemap.text(), /<loc>http:\/\/ctx\.local\/blog<\/loc>/);
 
+    const llmsTxt = await fetch(`${base}/llms.txt`);
+    assert.equal(llmsTxt.status, 200);
+    assert.equal(llmsTxt.headers.get("content-type"), "text/markdown; charset=utf-8");
+    assert.match(await llmsTxt.text(), /^# mindset-ctx/);
+
     // An unknown page gets a styled 404 — crucially NOT "401 unauthorized",
     // which is what an unauthenticated request used to get here (tenant auth
     // is configured on this server via tenantStore, the same as production):

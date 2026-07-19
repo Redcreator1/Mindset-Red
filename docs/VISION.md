@@ -619,3 +619,67 @@ personne ; fournisseur de tout le monde.
   (`support.test.ts` + routes configurée/non-configurée sur les deux
   runtimes, avec une vraie API Anthropic mockée plutôt que devinée) —
   142/142.
+- **19/07/2026** — Demande explicite de préparer le référencement dans les
+  annuaires MCP (awesome-mcp-servers, registre officiel, Smithery, mcp.so,
+  glama.ai). Audit d'abord : le serveur MCP existe déjà et fonctionne
+  (`src/mcp.ts`, trois outils `get_context`/`search_memory`/`analyze_repo`,
+  documenté dans le README), le paquet est déjà publié sur npm depuis la
+  v0.18 — mais `package.json` ne contenait aucun mot-clé "mcp" (invisible
+  à la recherche npm), il n'y avait pas de `llms.txt`, et le README
+  affirmait encore à tort que mindset-ctx n'était "pas encore sur npm"
+  (phrase écrite avant la v0.18, jamais corrigée). Corrigé : mots-clés
+  `mcp`/`model-context-protocol`/`mcp-server`/`cli` ajoutés ; `GET
+  /llms.txt` livré (`src/seo.ts`), même traitement que `robots.txt`/
+  `sitemap.xml` sur les deux runtimes — une carte Markdown du site
+  (résumé produit, dépôt GitHub, docs, tarifs, legal, blog), lue par les
+  agents/crawlers IA avant de parcourir le HTML. Contenu généré à partir
+  des mêmes sources que le sitemap (`blogPostsMeta()` ajouté à `blog.ts`
+  pour ne pas dupliquer les métadonnées des articles) — pas de texte
+  inventé. La soumission effective aux annuaires externes
+  (awesome-mcp-servers, registre MCP officiel, Smithery, mcp.so, glama.ai)
+  reste à faire par l'utilisateur : ce sont des PR sur des dépôts GitHub
+  tiers ou des formulaires web hors du scope GitHub de cette session —
+  cette session ne peut pas les soumettre à sa place. 2 nouveaux tests —
+  144/144.
+- **19/07/2026** — Audit de sécurité complet du code (pas juste un diff de
+  PR) : quatre lectures intégrales en parallèle (auth/session/SSO,
+  paiements/webhooks Stripe, intégrations externes GitHub/GitLab/Bitbucket/
+  chatbot support, rendu HTML/recherche/chemins de fichiers), puis chaque
+  piste trouvée repassée par un second agent dont le seul travail était de
+  la démonter. Six pistes soulevées, aucune au-dessus du seuil de
+  confiance retenu (8/10) — le détail de chacune et pourquoi elle ne tient
+  pas est dans l'historique de session, pas reproduit ici pour éviter la
+  duplication. Deux corrections bon marché appliquées quand même par
+  hygiène (aucune n'était une vraie faille) : plafond de taille sur
+  chaque message de `history` dans `support.ts` (le nombre de messages
+  était déjà plafonné, pas leur contenu — un appelant non authentifié
+  pouvait gonfler la facture Anthropic de l'opérateur) ; comparaison de la
+  clé API du mode `--api-key` partagé passée en temps constant
+  (`timingSafeEqualStr`), seul endroit du fichier qui utilisait encore un
+  `!==` nu alors que webhooks/session/état OAuth utilisent tous déjà ce
+  motif. Un garde `Object.hasOwn` ajouté sur `CONTEXT_FILES` pour la même
+  raison que celui déjà présent sur la table `repos` (évite un 500 sur
+  `.../context/constructor`).
+  Deux pistes plus profondes **volontairement laissées telles quelles**,
+  décision explicite de l'utilisateur (documenter plutôt que corriger à
+  la hâte) :
+  - `repos: "*"` par défaut sur les comptes auto-provisionnés (inscription
+    libre `/v1/signup`, SSO hors connexion Entreprise dédiée) donnerait
+    accès à tous les repos d'une instance si jamais elle en sert
+    plusieurs. Aujourd'hui inoffensif : le Worker hébergé en production
+    n'a aucune route `/v1/repos/*`, et le seul runtime qui les sert
+    (`server.ts`) est documenté comme self-hosted mono-opérateur ou
+    déploiement Enterprise dédié à un seul client — jamais plusieurs
+    clients mutuellement méfiants sur la même instance avec inscription
+    libre activée. Changer le défaut à `repos: []` casserait l'usage
+    Enterprise légitime (un opérateur qui *veut* que ses comptes
+    auto-provisionnés voient le(s) repo(s) qu'il sert) sans bénéfice
+    réel tant que cette combinaison n'est pas déployée. À revisiter si
+    un jour le Worker sert plusieurs repos à des clients distincts.
+  - Secret webhook unique (`--webhook-secret`) partagé par tous les repos
+    d'une même instance `server.ts` plutôt qu'un secret par repo — une
+    vraie refonte de structure (fichier tenants, CLI, docs), pas une
+    ligne à changer. Risque réel seulement si un opérateur distribue
+    volontairement ce même secret à plusieurs clients qui ne se font pas
+    confiance — pas le modèle documenté aujourd'hui.
+  1 nouveau test (plafond `history`) — 145/145.
