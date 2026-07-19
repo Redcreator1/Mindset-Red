@@ -35,6 +35,7 @@ jobs:
           put WORKOS_CLIENT_ID   "${{ secrets.WORKOS_CLIENT_ID }}"
           put WORKOS_API_KEY     "${{ secrets.WORKOS_API_KEY }}"
           put STRIPE_PRICE_MAP   '${{ secrets.STRIPE_PRICE_MAP }}'
+          put ANTHROPIC_API_KEY  "${{ secrets.ANTHROPIC_API_KEY }}"
 
       - name: Deploy
         env:

@@ -18,6 +18,7 @@ import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs, render404 } from "./home.js";
 import { renderBlogIndex, renderBlogPost } from "./blog.js";
 import { renderTerms, renderPrivacy } from "./legal.js";
+import { renderSupport, askSupportBot, SupportChatError, type SupportChatMessage } from "./support.js";
 import { ogImageBytes } from "./og-image.js";
 import { FAVICON_SVG } from "./favicon.js";
 import { renderRobotsTxt, renderSitemapXml } from "./seo.js";
@@ -96,6 +97,10 @@ export interface ServerOptions {
    * rank-ml.ts for why. Unset or missing directory: falls back to Rank v0.
    */
   rankMlModelDir?: string;
+  /** Anthropic API key; enables POST /v1/support/chat. Unset: the /support page shows the mailto fallback only. */
+  anthropicApiKey?: string;
+  /** Override Anthropic API base (for tests). Default: https://api.anthropic.com */
+  anthropicBaseURL?: string;
 }
 
 export const CONTEXT_FILES: Record<string, string> = {
@@ -291,6 +296,45 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
       return;
     }
 
+    // Public support chat — no tenant key required, since a prospect asking
+    // "what does self-hosted mean" hasn't signed up yet. Grounded strictly
+    // in support.ts's own knowledge base (see its doc comment for why) —
+    // never allowed to invent product claims.
+    if (path === "/v1/support/chat") {
+      if (req.method !== "POST") {
+        sendJson(res, 405, { error: "expects POST" });
+        return;
+      }
+      if (!opts.anthropicApiKey) {
+        sendJson(res, 503, { error: "support chat not configured — set --anthropic-api-key or ANTHROPIC_API_KEY" });
+        return;
+      }
+      const body = await readBody(req);
+      let payload: { question?: string; history?: SupportChatMessage[] };
+      try {
+        payload = JSON.parse(body.toString("utf8")) as typeof payload;
+      } catch {
+        sendJson(res, 400, { error: "invalid JSON" });
+        return;
+      }
+      if (!payload.question) {
+        sendJson(res, 400, { error: "missing question" });
+        return;
+      }
+      try {
+        const answer = await askSupportBot({
+          apiKey: opts.anthropicApiKey,
+          question: payload.question,
+          history: payload.history,
+          baseURL: opts.anthropicBaseURL,
+        });
+        sendJson(res, 200, { answer });
+      } catch (err) {
+        sendJson(res, err instanceof SupportChatError ? 400 : 502, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
     // Public marketing pages — no auth required. Root domain is the vitrine
     // (thesis, not price list); "/" previously aliased to the health check
     // above and this branch was dead code — fixed while adding /docs.
@@ -363,6 +407,12 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     if (path === "/privacy") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(renderPrivacy(opts.appBaseUrl));
+      return;
+    }
+
+    if (path === "/support") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderSupport(opts.appBaseUrl));
       return;
     }
 

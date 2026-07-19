@@ -2,6 +2,7 @@ import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js"
 import { renderHome, renderDocs, render404 } from "../home.js";
 import { renderBlogIndex, renderBlogPost } from "../blog.js";
 import { renderTerms, renderPrivacy } from "../legal.js";
+import { renderSupport, askSupportBot, SupportChatError, type SupportChatMessage } from "../support.js";
 import { ogImageBytes } from "../og-image.js";
 import { FAVICON_SVG } from "../favicon.js";
 import { renderRobotsTxt, renderSitemapXml } from "../seo.js";
@@ -45,6 +46,8 @@ export interface Env {
   WORKOS_API_KEY?: string;
   STRIPE_PRICE_MAP?: string;
   CTX_BASE_URL?: string;
+  /** Enables POST /v1/support/chat. Unset: the chat widget shows the mailto fallback only. */
+  ANTHROPIC_API_KEY?: string;
 }
 
 function json(status: number, body: unknown): Response {
@@ -157,6 +160,10 @@ export default {
       return html(200, renderPrivacy(baseUrl));
     }
 
+    if (path === "/support") {
+      return html(200, renderSupport(baseUrl));
+    }
+
     const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);
     if (blogMatch) {
       const rendered = renderBlogPost(blogMatch[1], baseUrl);
@@ -166,6 +173,33 @@ export default {
 
     if (path === "/v1/health") {
       return json(200, { ok: true, service: "mindset-ctx", edge: "cloudflare-workers" });
+    }
+
+    // Public support chat — no tenant key required, since a prospect asking
+    // "what does self-hosted mean" hasn't signed up yet. Grounded strictly
+    // in support.ts's own knowledge base (see its doc comment for why) —
+    // never allowed to invent product claims.
+    if (path === "/v1/support/chat") {
+      if (req.method !== "POST") return json(405, { error: "expects POST" });
+      if (!env.ANTHROPIC_API_KEY) return json(503, { error: "support chat not configured" });
+      let payload: { question?: string; history?: SupportChatMessage[] };
+      try {
+        payload = (await req.json()) as typeof payload;
+      } catch {
+        return json(400, { error: "invalid JSON" });
+      }
+      if (!payload.question) return json(400, { error: "missing question" });
+      try {
+        const answer = await askSupportBot({
+          apiKey: env.ANTHROPIC_API_KEY,
+          question: payload.question,
+          history: payload.history,
+        });
+        return json(200, { answer });
+      } catch (err) {
+        if (err instanceof SupportChatError) return json(400, { error: err.message });
+        return json(502, { error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     // Self-service signup: mint a fresh tenant key, register free, open a

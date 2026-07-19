@@ -1,7 +1,6 @@
 import type { Tenant } from "./tenant-core.js";
 import { tenantDailyLimit, tenantPlan } from "./tenant-core.js";
 import type { MemoryRecord } from "./types.js";
-import { SUPPORT_EMAIL } from "./home.js";
 
 /**
  * Web dashboard for the hosted mode: a single self-contained HTML page
@@ -137,6 +136,6 @@ export function renderDashboard(data: DashboardData): string {
       : '<p class="empty">Running without tenants (single shared key or open access).</p>'
   }
 </main>
-<footer>mindset-ctx · <a href="/v1/dashboard/data" style="color:#475569">JSON</a> · auto-generated · <a href="mailto:${SUPPORT_EMAIL}" style="color:#475569">Support</a></footer>
+<footer>mindset-ctx · <a href="/v1/dashboard/data" style="color:#475569">JSON</a> · auto-generated · <a href="/support" style="color:#475569">Support</a></footer>
 </body></html>`;
 }

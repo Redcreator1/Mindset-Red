@@ -174,6 +174,19 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     assert.equal(privacy.status, 200);
     assert.match(await privacy.text(), /Stripe/);
 
+    // /support renders publicly; /v1/support/chat 503s since anthropicApiKey
+    // isn't configured on this particular server instance (covered
+    // separately below with a mocked Anthropic API).
+    const support = await fetch(`${base}/support`);
+    assert.equal(support.status, 200);
+    assert.match(await support.text(), /support/i);
+    const unconfiguredChat = await fetch(`${base}/v1/support/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "salut" }),
+    });
+    assert.equal(unconfiguredChat.status, 503);
+
     // /favicon.svg is served; the legacy /favicon.ico request redirects to it.
     const favicon = await fetch(`${base}/favicon.svg`);
     assert.equal(favicon.status, 200);
@@ -283,5 +296,42 @@ test("bootstrapStripePlans is idempotent and prints a usable STRIPE_PRICE_MAP", 
     assert.equal(stripe.state.prices.length, pricesAfterFirst);
   } finally {
     stripe.server.close();
+  }
+});
+
+function startAnthropicMock(reply: string): Promise<{ baseURL: string; server: Server }> {
+  const server = createServer(async (req, res) => {
+    for await (const _c of req) { /* drain */ }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ content: [{ type: "text", text: reply }] }));
+  });
+  return new Promise((resolve) => {
+    server.listen(0, () => {
+      const port = (server.address() as { port: number }).port;
+      resolve({ baseURL: `http://127.0.0.1:${port}`, server });
+    });
+  });
+}
+
+test("/v1/support/chat answers when anthropicApiKey is configured", async () => {
+  const repo = makeRepo("support-chat");
+  const anthropic = await startAnthropicMock("Le mode self-hosted est gratuit et illimité.");
+  const server = createContextServer({ support: repo }, {
+    anthropicApiKey: "sk-ant-test",
+    anthropicBaseURL: anthropic.baseURL,
+  });
+  const base = await listen(server);
+  try {
+    const res = await fetch(`${base}/v1/support/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "Le self-hosted est-il payant ?" }),
+    });
+    assert.equal(res.status, 200);
+    const data = await res.json() as { answer: string };
+    assert.equal(data.answer, "Le mode self-hosted est gratuit et illimité.");
+  } finally {
+    server.close();
+    anthropic.server.close();
   }
 });
