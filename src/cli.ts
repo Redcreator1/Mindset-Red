@@ -66,7 +66,10 @@ Usage:
                                notebooks/train_rank_ml.py, to rerank
                                mode=hybrid results with a real trained model
                                instead of just Rank v0's heuristic (Node only —
-                               see src/rank-ml.ts for why)
+                               see src/rank-ml.ts for why); ANTHROPIC_API_KEY
+                               (same var as generate --ai) enables the
+                               /support chat — unset, /support still renders
+                               with just the mailto fallback
   ctx app manifest [--base-url URL]
                                Print the GitHub App manifest (JSON) for
                                one-click App creation
@@ -255,11 +258,14 @@ function cmdServe(argv: string[]): void {
   // Rank ML (Node-only — see rank-ml.ts): points at a local directory
   // exported by notebooks/train_rank_ml.py. Unset or missing: Rank v0 only.
   const rankMlModelDir = arg("--rank-ml-model-dir", argv) ?? process.env.CTX_RANK_ML_MODEL_DIR;
+  // Same ANTHROPIC_API_KEY already used by `ctx generate --ai` — no new env
+  // var. Unset: /support still renders, just without the chat widget.
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
   const paths = positionals(argv).map((p) => resolve(p));
   if (paths.length === 0) paths.push(resolve("."));
   const repos = Object.fromEntries(paths.map((p) => [basename(p) || "repo", p]));
 
-  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl, rankMlModelDir }).listen(port, () => {
+  createContextServer(repos, { apiKey, tenantStore, webhookSecret, stripeSecret, stripeApiKey, stripePriceMap, appBaseUrl, rankMlModelDir, anthropicApiKey }).listen(port, () => {
     const names = Object.keys(repos);
     const authLabel = tenantStore ? ` [${tenantStore.all().length} tenant(s)]` : apiKey ? " [api-key required]" : "";
     const flags = [webhookSecret && "webhooks", stripeSecret && "stripe"].filter(Boolean).join("+");

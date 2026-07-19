@@ -96,6 +96,42 @@ test("Worker: /terms and /privacy render publicly, no auth required", async () =
   assert.match(await privacy.text(), /Stripe/);
 });
 
+test("Worker: /support renders publicly; /v1/support/chat 503s unconfigured and answers when configured", async () => {
+  const supportPage = await worker.fetch(new Request("https://ctx.example.com/support"), { CTX_KV: new MemKV() });
+  assert.equal(supportPage.status, 200);
+  assert.match(await supportPage.text(), /support/i);
+
+  // Unconfigured: no ANTHROPIC_API_KEY on env — must not silently pretend to work.
+  const unconfigured = await worker.fetch(
+    new Request("https://ctx.example.com/v1/support/chat", { method: "POST", body: JSON.stringify({ question: "salut" }) }),
+    { CTX_KV: new MemKV() },
+  );
+  assert.equal(unconfigured.status, 503);
+
+  // Configured: real route, mocked Anthropic API.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (u.startsWith("https://api.anthropic.com/v1/messages")) {
+      return new Response(JSON.stringify({ content: [{ type: "text", text: "Réponse test." }] }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+  try {
+    const configured = await worker.fetch(
+      new Request("https://ctx.example.com/v1/support/chat", { method: "POST", body: JSON.stringify({ question: "salut" }) }),
+      { CTX_KV: new MemKV(), ANTHROPIC_API_KEY: "sk-ant-test" },
+    );
+    assert.equal(configured.status, 200);
+    const data = await configured.json() as { answer: string };
+    assert.equal(data.answer, "Réponse test.");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
 test("Worker: /favicon.svg is served; /favicon.ico redirects to it", async () => {
   const env = { CTX_KV: new MemKV() };
   const favicon = await worker.fetch(new Request("https://ctx.example.com/favicon.svg"), env);

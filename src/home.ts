@@ -79,7 +79,7 @@ ${opts.body}
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
   <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a><br>
-  <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a> · <a href="mailto:${SUPPORT_EMAIL}">Support</a>
+  <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a> · <a href="/support">Support</a>
 </footer>
 </body></html>`;
 }

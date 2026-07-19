@@ -592,3 +592,30 @@ personne ; fournisseur de tout le monde.
   départ solide, pas un avis juridique — à faire relire avant que le
   volume de clients ne justifie le risque. 8 nouveaux tests
   (`legal.test.ts` + routes sur les deux runtimes) — 134/134.
+- **19/07/2026** — Demande explicite d'aller au-delà d'une simple adresse
+  email pour le support : un chatbot qui répond aux questions d'usage, et
+  qui prévient l'humain (par email) si besoin, sans que l'utilisateur ne
+  perde la main sur ce qui est réellement envoyé. Deux décisions tranchées
+  par l'utilisateur avant de coder : escalade par lien `mailto:` pré-rempli
+  (zéro nouveau service, zéro clé API supplémentaire) plutôt qu'un envoi
+  automatique via un service d'emails transactionnels ; page `/support`
+  dédiée plutôt qu'une bulle flottante sur tout le site.
+  Livré `src/support.ts` : `askSupportBot()` appelle l'API Messages
+  d'Anthropic en `fetch` brut (pas le SDK) — même raisonnement de
+  portabilité que `checkout.ts`/`workos.ts`, le même code tourne sur
+  `server.ts` et `worker/index.ts`. Le bot répond **uniquement** à partir
+  d'une base de connaissance écrite à la main (`SUPPORT_KNOWLEDGE`) —
+  jamais depuis le contenu réel des fichiers du repo (le Worker n'a pas de
+  système de fichiers) et jamais depuis la mémoire du modèle sur le
+  produit, pour ne pas réintroduire le problème de survente qu'on vient de
+  corriger deux fois cette semaine. Modèle `claude-haiku-4-5` (rapide, pas
+  cher) — pas Opus, qui sert `generate --ai`, un usage ponctuel et non
+  public. `ANTHROPIC_API_KEY` (même variable que `generate --ai`, pas de
+  nouvelle variable) poussée comme secret optionnel sur le déploiement
+  Cloudflare ; absente, `/support` s'affiche quand même avec seulement le
+  lien `mailto:` de secours. `SUPPORT_EMAIL` centralisé dans `home.ts`
+  (déjà l'adresse utilisée pour Enterprise), réutilisé partout — pied de
+  page, page de succès, dashboard, `/support`. 8 nouveaux tests
+  (`support.test.ts` + routes configurée/non-configurée sur les deux
+  runtimes, avec une vraie API Anthropic mockée plutôt que devinée) —
+  142/142.
