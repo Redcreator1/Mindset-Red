@@ -181,6 +181,11 @@ function validGitLabToken(secret: string, header: string | undefined): boolean {
   return timingSafeEqual(Buffer.from(header, "utf8"), Buffer.from(secret, "utf8"));
 }
 
+/** Constant-time string compare — same reasoning as validSignature/validGitLabToken above. */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  return a.length === b.length && timingSafeEqual(Buffer.from(a, "utf8"), Buffer.from(b, "utf8"));
+}
+
 /** GitLab's human-readable X-Gitlab-Event names → our normalized event strings. */
 const GITLAB_EVENT_MAP: Record<string, string> = {
   "Push Hook": "push",
@@ -221,7 +226,7 @@ async function handleRepoRoute(root: string, sub: string, url: URL, res: ServerR
 
   const contextMatch = sub.match(/^context\/([a-z-]+)$/);
   if (contextMatch) {
-    const file = CONTEXT_FILES[contextMatch[1]];
+    const file = Object.hasOwn(CONTEXT_FILES, contextMatch[1]) ? CONTEXT_FILES[contextMatch[1]] : undefined;
     if (!file) {
       sendJson(res, 404, { error: `unknown context '${contextMatch[1]}'`, available: Object.keys(CONTEXT_FILES) });
       return;
@@ -862,7 +867,7 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         sendJson(res, 429, { error: "daily quota exceeded", ...meter.report(tenant, org) });
         return;
       }
-    } else if (opts.apiKey && requestKey(req) !== opts.apiKey) {
+    } else if (opts.apiKey && !timingSafeEqualStr(requestKey(req) ?? "", opts.apiKey)) {
       sendJson(res, 401, { error: "unauthorized — pass Authorization: Bearer <key> or x-api-key" });
       return;
     }

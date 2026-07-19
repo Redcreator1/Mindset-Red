@@ -98,6 +98,7 @@ export interface SupportChatMessage {
 
 const MAX_QUESTION_LENGTH = 1500;
 const MAX_HISTORY_MESSAGES = 8;
+const MAX_HISTORY_MESSAGE_LENGTH = 1500;
 
 export class SupportChatError extends Error {}
 
@@ -119,6 +120,11 @@ export async function askSupportBot(opts: {
   }
 
   const history = (opts.history ?? []).slice(-MAX_HISTORY_MESSAGES);
+  for (const msg of history) {
+    if (msg.content.length > MAX_HISTORY_MESSAGE_LENGTH) {
+      throw new SupportChatError(`history message too long (max ${MAX_HISTORY_MESSAGE_LENGTH} characters)`);
+    }
+  }
   const base = (opts.baseURL ?? "https://api.anthropic.com").replace(/\/+$/, "");
 
   const res = await fetch(`${base}/v1/messages`, {

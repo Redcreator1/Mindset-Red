@@ -44,6 +44,19 @@ test("askSupportBot rejects a question over the length cap without calling the A
   );
 });
 
+test("askSupportBot rejects an oversized history message without calling the API — caps cost against the operator's own Anthropic key", async () => {
+  await assert.rejects(
+    () =>
+      askSupportBot({
+        apiKey: "sk-ant-test",
+        question: "salut",
+        history: [{ role: "user", content: "x".repeat(2000) }],
+        baseURL: "http://127.0.0.1:1",
+      }),
+    SupportChatError,
+  );
+});
+
 test("askSupportBot surfaces a SupportChatError on a non-2xx response instead of throwing a generic error", async () => {
   const server = createServer((_req, res) => {
     res.writeHead(429, { "content-type": "application/json" });
