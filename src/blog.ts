@@ -95,6 +95,72 @@ function featuresSvg(): string {
 
 const POSTS: BlogPost[] = [
   {
+    slug: "comment-on-audite-mindset-ctx",
+    title: "Comment on audite mindset-ctx : la méthode, pas juste le résultat",
+    date: "2026-07-19",
+    excerpt:
+      "\"On prend la sécurité au sérieux\" ne veut rien dire tant que ça n'est pas vérifiable. Voici exactement comment on a audité mindset-ctx cette semaine, ce qu'on a trouvé, et pourquoi la plupart des pistes soulevées n'ont pas survécu au second regard.",
+    bodyHtml: `
+<p>"On prend la sécurité au sérieux" est probablement la phrase la plus répétée et la
+moins vérifiable du logiciel. N'importe qui peut l'écrire. Ce qui distingue une vraie
+revue d'un slogan, c'est la méthode — et la volonté de montrer ce qu'on a écarté, pas
+seulement ce qu'on a corrigé.</p>
+
+<p>Voici exactement comment on a audité mindset-ctx cette semaine.</p>
+
+<h2>La méthode : deux passes, pas une</h2>
+<p>Une revue de sécurité en une seule passe a un biais structurel : la personne qui
+trouve une piste a envie qu'elle soit réelle. Pour éviter ça, on a séparé les deux
+rôles :</p>
+<ul>
+  <li><strong>Passe 1 — identification</strong> : lecture intégrale de chaque fichier
+  sensible (authentification/session, paiements Stripe, webhooks GitHub/GitLab,
+  rendu HTML et recherche), domaine par domaine, à la recherche de tout ce qui
+  pourrait ressembler à une faille.</li>
+  <li><strong>Passe 2 — démolition</strong> : chaque piste retenue passe devant un
+  second examen dont le seul objectif est de la réfuter, en vérifiant si elle est
+  réellement exploitable dans le déploiement réel du produit — pas dans une
+  combinaison théorique de fonctionnalités qui n'existe nulle part en production.</li>
+</ul>
+
+<h2>Ce qu'on a trouvé, et pourquoi ça ne compte pas</h2>
+<p>Six pistes ont été soulevées en passe 1. Aucune n'a survécu au seuil de confiance
+retenu pour un rapport final. Deux exemples concrets de ce que "ne pas exagérer une
+faille" veut dire en pratique :</p>
+
+<p><strong>L'en-tête Host reflété dans un manifest GitHub App.</strong> Un attaquant
+pourrait en théorie envoyer un en-tête <code>Host</code> falsifié. Mais cette route
+n'est appelée que par l'opérateur lui-même, une seule fois, en visitant directement sa
+propre URL pour une configuration initiale — personne d'autre ne peut forcer ce
+scénario à distance. Piste réelle sur le papier, sans chemin d'exploitation
+réaliste.</p>
+
+<p><strong>Une comparaison de clé sans temps constant.</strong> Une incohérence de
+style, oui : un endroit du code comparait une clé API avec <code>!==</code> au lieu du
+comparateur à temps constant utilisé partout ailleurs. Mais l'extraction par attaque
+temporelle sur un serveur HTTP classique reste théorique — le bruit réseau noie le
+signal bien avant qu'un octet ne soit récupérable.</p>
+
+<h2>Ce qu'on a corrigé quand même</h2>
+<p>Aucune de ces pistes n'était une faille confirmée — mais deux corrections
+d'hygiène ont été appliquées, parce qu'elles étaient bon marché et cohérentes avec
+des motifs déjà établis dans le code : la comparaison de clé passée en temps
+constant partout, et un plafond de taille ajouté sur un champ qui n'en avait pas
+(évite qu'un appel non authentifié gonfle la facture de l'API tierce utilisée par le
+chatbot support).</p>
+
+<h2>Le standard qu'on applique à chaque fois</h2>
+<p>Ce n'est pas la première revue de ce genre sur ce projet — une revue précédente
+avait trouvé et corrigé trois vraies failles (CSRF sur un cookie de session,
+login-CSRF sur le flux SSO, exécution shell non sécurisée dans l'extension VS Code).
+Cette fois-ci, zéro faille confirmée. Les deux résultats sont publiés avec le même
+niveau de détail — parce qu'un audit qui ne montre que ses succès n'est pas un audit,
+c'est de la communication.</p>
+
+<p>Open source, historique complet des commits et PRs visible : <a href="${REPO_URL}">${REPO_URL.replace("https://", "")}</a></p>
+`,
+  },
+  {
     slug: "mcp-explique",
     title: "MCP expliqué : le protocole qui évite de recoder l'intégration pour chaque agent IA",
     date: "2026-07-18",
