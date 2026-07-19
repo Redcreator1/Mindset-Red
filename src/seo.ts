@@ -1,7 +1,7 @@
 import { blogSlugs } from "./blog.js";
 
 /** Public, crawlable pages — API routes (/v1/*) are deliberately excluded. */
-const STATIC_PATHS = ["/", "/docs", "/pricing", "/blog"];
+const STATIC_PATHS = ["/", "/docs", "/pricing", "/blog", "/terms", "/privacy"];
 
 export function renderRobotsTxt(baseUrl?: string): string {
   const base = baseUrl?.replace(/\/+$/, "");

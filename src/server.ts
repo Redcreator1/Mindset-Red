@@ -17,6 +17,7 @@ import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs, render404 } from "./home.js";
 import { renderBlogIndex, renderBlogPost } from "./blog.js";
+import { renderTerms, renderPrivacy } from "./legal.js";
 import { ogImageBytes } from "./og-image.js";
 import { FAVICON_SVG } from "./favicon.js";
 import { renderRobotsTxt, renderSitemapXml } from "./seo.js";
@@ -350,6 +351,18 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
     if (path === "/blog") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(renderBlogIndex(opts.appBaseUrl));
+      return;
+    }
+
+    if (path === "/terms") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderTerms(opts.appBaseUrl));
+      return;
+    }
+
+    if (path === "/privacy") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(renderPrivacy(opts.appBaseUrl));
       return;
     }
 

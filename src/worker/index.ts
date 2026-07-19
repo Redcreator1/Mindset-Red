@@ -1,6 +1,7 @@
 import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js";
 import { renderHome, renderDocs, render404 } from "../home.js";
 import { renderBlogIndex, renderBlogPost } from "../blog.js";
+import { renderTerms, renderPrivacy } from "../legal.js";
 import { ogImageBytes } from "../og-image.js";
 import { FAVICON_SVG } from "../favicon.js";
 import { renderRobotsTxt, renderSitemapXml } from "../seo.js";
@@ -146,6 +147,14 @@ export default {
 
     if (path === "/blog") {
       return html(200, renderBlogIndex(baseUrl));
+    }
+
+    if (path === "/terms") {
+      return html(200, renderTerms(baseUrl));
+    }
+
+    if (path === "/privacy") {
+      return html(200, renderPrivacy(baseUrl));
     }
 
     const blogMatch = path.match(/^\/blog\/([a-z0-9-]+)$/);

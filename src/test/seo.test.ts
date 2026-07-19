@@ -17,7 +17,7 @@ test("renderRobotsTxt disallows /v1/, allows everything else, and points at the 
 test("renderSitemapXml lists every static page and every blog post with absolute URLs", () => {
   const xml = renderSitemapXml("https://ctx.example.com");
   assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
-  for (const path of ["/", "/docs", "/pricing", "/blog"]) {
+  for (const path of ["/", "/docs", "/pricing", "/blog", "/terms", "/privacy"]) {
     assert.match(xml, new RegExp(`<loc>https://ctx\\.example\\.com${path.replace("/", "\\/")}</loc>`));
   }
   assert.match(xml, /<loc>https:\/\/ctx\.example\.com\/blog\/infrastructure-de-contexte-pour-agents-ia<\/loc>/);

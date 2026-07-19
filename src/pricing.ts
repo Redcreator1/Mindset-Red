@@ -1,5 +1,5 @@
 import { PLANS, type PlanId } from "./billing.js";
-import { ogMeta } from "./home.js";
+import { ogMeta, SUPPORT_EMAIL } from "./home.js";
 
 /**
  * Public pricing page and self-service signup — the "front door" that lets
@@ -44,7 +44,7 @@ export function renderPricing(opts: { baseUrl: string; availablePlans: Set<PlanI
     const href = c.plan === "free"
       ? "https://github.com/Redcreator1/Mindset-Red#readme"
       : c.plan === "enterprise"
-      ? "mailto:mindset22633@gmail.com?subject=mindset-ctx%20Enterprise"
+      ? `mailto:${SUPPORT_EMAIL}?subject=mindset-ctx%20Enterprise`
       : `/v1/signup?plan=${c.plan}`;
     const disabled = !enabled && c.plan !== "free" && c.plan !== "enterprise";
     return `
@@ -106,7 +106,8 @@ ${ogMeta({
 <main><div class="grid">${cards}</div></main>
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
-  <a href="https://github.com/Redcreator1/Mindset-Red">GitHub</a> · <a href="/v1/dashboard">Dashboard</a>
+  Pro/Team : 14 jours satisfait ou remboursé. <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a><br>
+  <a href="https://github.com/Redcreator1/Mindset-Red">GitHub</a> · <a href="/v1/dashboard">Dashboard</a> · <a href="mailto:${SUPPORT_EMAIL}">Support</a>
 </footer>
 </body></html>`;
 }
@@ -136,6 +137,7 @@ export function renderSuccess(tenantKey: string, baseUrl = ""): string {
   <p>Utilisation — vérifiez votre quota :</p>
   <code>curl -H "Authorization: Bearer ${esc(tenantKey)}" ${esc(apiBase)}/v1/usage</code>
   <p>Votre <a href="${esc(apiBase)}/v1/dashboard?key=${esc(encodeURIComponent(tenantKey))}">dashboard</a> est accessible avec cette même clé (le lien ci-dessus fonctionne directement). Pour le self-hosted et l'intégration Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
+  <p style="color:#94a3b8;font-size:13px">Un souci ? <a href="mailto:${SUPPORT_EMAIL}">${SUPPORT_EMAIL}</a> — remboursement possible sous 14 jours, voir les <a href="${esc(apiBase)}/terms">CGV</a>.</p>
 </main></body></html>`;
 }
 

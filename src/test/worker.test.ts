@@ -85,6 +85,17 @@ test("Worker: /blog lists posts, /blog/:slug renders one, unknown slugs 404", as
   assert.match(await missing.text(), /<!doctype html>/, "styled 404, not JSON");
 });
 
+test("Worker: /terms and /privacy render publicly, no auth required", async () => {
+  const env = { CTX_KV: new MemKV() };
+  const terms = await worker.fetch(new Request("https://ctx.example.com/terms"), env);
+  assert.equal(terms.status, 200);
+  assert.match(await terms.text(), /14 jours/);
+
+  const privacy = await worker.fetch(new Request("https://ctx.example.com/privacy"), env);
+  assert.equal(privacy.status, 200);
+  assert.match(await privacy.text(), /Stripe/);
+});
+
 test("Worker: /favicon.svg is served; /favicon.ico redirects to it", async () => {
   const env = { CTX_KV: new MemKV() };
   const favicon = await worker.fetch(new Request("https://ctx.example.com/favicon.svg"), env);
