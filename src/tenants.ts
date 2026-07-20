@@ -116,11 +116,12 @@ export class TenantStore {
   }
 
   /** Change a tenant's plan (from a Stripe event); persists if file-backed. */
-  setPlan(key: string, plan: PlanId): boolean {
+  setPlan(key: string, plan: PlanId, stripeCustomerId?: string): boolean {
     const tenant = this.byKey.get(key);
     if (!tenant) return false;
     tenant.plan = plan;
     delete tenant.dailyLimit; // plan quota takes over from any manual override
+    if (stripeCustomerId) tenant.stripeCustomerId = stripeCustomerId;
     this.persist();
     return true;
   }
@@ -146,11 +147,12 @@ export class TenantStore {
   }
 
   /** Change an organization's plan (from a Stripe event); persists if file-backed. */
-  setOrgPlan(id: string, plan: PlanId): boolean {
+  setOrgPlan(id: string, plan: PlanId, stripeCustomerId?: string): boolean {
     const org = this.orgsById.get(id);
     if (!org) return false;
     org.plan = plan;
     delete org.dailyLimit;
+    if (stripeCustomerId) org.stripeCustomerId = stripeCustomerId;
     this.persist();
     return true;
   }

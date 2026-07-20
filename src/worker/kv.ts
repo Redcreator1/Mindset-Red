@@ -36,11 +36,12 @@ export class KvTenantStore {
     await this.kv.put(`tenant:${tenant.key}`, JSON.stringify(tenant));
   }
 
-  async setPlan(key: string, plan: PlanId): Promise<boolean> {
+  async setPlan(key: string, plan: PlanId, stripeCustomerId?: string): Promise<boolean> {
     const tenant = await this.get(key);
     if (!tenant) return false;
     tenant.plan = plan;
     delete tenant.dailyLimit;
+    if (stripeCustomerId) tenant.stripeCustomerId = stripeCustomerId;
     await this.upsert(tenant);
     return true;
   }
@@ -90,11 +91,12 @@ export class KvTenantStore {
     await this.kv.put(`org:${org.id}`, JSON.stringify(org));
   }
 
-  async setOrgPlan(id: string, plan: PlanId): Promise<boolean> {
+  async setOrgPlan(id: string, plan: PlanId, stripeCustomerId?: string): Promise<boolean> {
     const org = await this.getOrg(id);
     if (!org) return false;
     org.plan = plan;
     delete org.dailyLimit;
+    if (stripeCustomerId) org.stripeCustomerId = stripeCustomerId;
     await this.upsertOrg(org);
     return true;
   }

@@ -12,7 +12,7 @@ import { TenantStore, UsageMeter, tenantCanManageBilling, tenantMayAccess, type 
 import { resolveSubscriptionEvent, verifyStripeSignature, type PlanId } from "./billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "./githubapp.js";
 import { renderDashboard, summarizeRecords, summarizeTenant, type DashboardData } from "./dashboard.js";
-import { createCheckoutSession, newOrgId, newTenantKey, priceForPlan } from "./checkout.js";
+import { createBillingPortalSession, createCheckoutSession, newOrgId, newTenantKey, priceForPlan } from "./checkout.js";
 import { PLANS } from "./billing.js";
 import { renderAppInstalled, renderPricing, renderSuccess } from "./pricing.js";
 import { renderHome, renderDocs, render404 } from "./home.js";
@@ -758,8 +758,8 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
         // tenant who happened to check out — every teammate shares it.
         const billedTenant = store.get(outcome.tenantKey);
         const applied = billedTenant?.orgId
-          ? store.setOrgPlan(billedTenant.orgId, outcome.plan)
-          : store.setPlan(outcome.tenantKey, outcome.plan);
+          ? store.setOrgPlan(billedTenant.orgId, outcome.plan, outcome.stripeCustomerId)
+          : store.setPlan(outcome.tenantKey, outcome.plan, outcome.stripeCustomerId);
         sendJson(res, 200, { ok: true, ...outcome, applied });
       } else {
         sendJson(res, 200, { ok: true, ...outcome });
@@ -917,6 +917,44 @@ export function createContextServer(rootOrRepos: string | Record<string, string>
           baseURL: opts.stripeBaseURL,
         });
         sendJson(res, 200, { plan, checkoutUrl: session.url, sessionId: session.id });
+      } catch (err) {
+        sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
+
+    // Self-service billing management (cancel, change card, view invoices) —
+    // a Stripe-hosted page, no custom UI to build or secure. Same auth gate
+    // as /v1/checkout (never the ?key= fallback — this reaches Stripe's real
+    // cancel-my-subscription UI, pre-authenticated for the customer, so a
+    // leaked link would be as sensitive as a leaked checkout link).
+    if (path === "/v1/billing/portal") {
+      if (!tenant) {
+        sendJson(res, 404, { error: "billing portal is only available in tenants mode (--tenants)" });
+        return;
+      }
+      if (!tenantCanManageBilling(tenant)) {
+        sendJson(res, 403, { error: "only the team owner can manage billing" });
+        return;
+      }
+      if (!opts.stripeApiKey) {
+        sendJson(res, 503, { error: "billing portal not configured — set --stripe-api-key or CTX_STRIPE_API_KEY" });
+        return;
+      }
+      const billedEntity = tenant.orgId ? store.getOrg(tenant.orgId) : tenant;
+      const stripeCustomerId = billedEntity?.stripeCustomerId;
+      if (!stripeCustomerId) {
+        sendJson(res, 400, { error: "no Stripe customer on file yet — subscribe via /v1/checkout first" });
+        return;
+      }
+      try {
+        const session = await createBillingPortalSession({
+          secretKey: opts.stripeApiKey,
+          customerId: stripeCustomerId,
+          returnUrl: opts.checkoutSuccessUrl ?? `${opts.appBaseUrl ?? ""}/v1/dashboard`,
+          baseURL: opts.stripeBaseURL,
+        });
+        sendJson(res, 200, { portalUrl: session.url });
       } catch (err) {
         sendJson(res, 502, { error: err instanceof Error ? err.message : String(err) });
       }

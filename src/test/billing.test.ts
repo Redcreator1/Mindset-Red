@@ -93,6 +93,27 @@ test("resolveSubscriptionEvent maps subscription lifecycle to plan changes", () 
   assert.match((resolveSubscriptionEvent(noKey, priceMap) as { reason: string }).reason, /tenant_key/);
 });
 
+test("resolveSubscriptionEvent carries the Stripe customer id through when present, needed to open a Billing Portal session later", () => {
+  const priceMap = { price_pro: "pro" as const };
+  const mkEvent = (type: string, status: string) => ({
+    type,
+    data: {
+      object: {
+        id: "sub_1", status, customer: "cus_123",
+        metadata: { tenant_key: "sk-alice" },
+        items: { data: [{ price: { id: "price_pro" } }] },
+      },
+    },
+  });
+
+  assert.deepEqual(resolveSubscriptionEvent(mkEvent("customer.subscription.created", "active"), priceMap), {
+    action: "set-plan", tenantKey: "sk-alice", plan: "pro", stripeCustomerId: "cus_123",
+  });
+  assert.deepEqual(resolveSubscriptionEvent(mkEvent("customer.subscription.deleted", "canceled"), priceMap), {
+    action: "downgrade", tenantKey: "sk-alice", plan: "free", stripeCustomerId: "cus_123",
+  });
+});
+
 // ---------- TenantStore persistence ----------
 
 test("TenantStore.setPlan mutates and persists to file", () => {
