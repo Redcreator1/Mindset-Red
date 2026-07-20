@@ -31,6 +31,8 @@ export interface Tenant {
   role?: "owner" | "member";
   /** WorkOS user id, set when this tenant was provisioned by an SSO login rather than signup/App install. */
   ssoUserId?: string;
+  /** Stripe Customer id, set from subscription webhooks — needed to open a Billing Portal session. */
+  stripeCustomerId?: string;
 }
 
 /**
@@ -46,6 +48,8 @@ export interface Organization {
   repos: string[] | "*";
   /** WorkOS organization id — links a WorkOS company to this org so every employee who logs in via SSO lands in the same pooled team, not a fresh one each time. */
   ssoOrgId?: string;
+  /** Stripe Customer id, set from subscription webhooks — needed to open a Billing Portal session. */
+  stripeCustomerId?: string;
 }
 
 /** Resolve the effective daily quota for a tenant (override > plan). */

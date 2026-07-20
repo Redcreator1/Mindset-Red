@@ -80,6 +80,41 @@ export async function createCheckoutSession(opts: CheckoutOptions): Promise<{ id
   return { id: session.id, url: session.url };
 }
 
+export interface BillingPortalOptions {
+  secretKey: string;
+  /** Stripe Customer id (stored on the tenant/org from a subscription webhook). */
+  customerId: string;
+  /** Where Stripe sends the customer back after they leave the portal. */
+  returnUrl: string;
+  /** Override for tests. Default: https://api.stripe.com */
+  baseURL?: string;
+}
+
+/**
+ * Create a Stripe Billing Portal session so a customer can manage or cancel
+ * their own subscription — self-service, no custom UI to build or secure.
+ * Requires a Billing Portal configuration to already exist on the Stripe
+ * account (Dashboard → Settings → Billing → Customer portal, one-time setup);
+ * Stripe returns a clear error if none exists yet, surfaced as-is rather than
+ * guessed at.
+ */
+export async function createBillingPortalSession(opts: BillingPortalOptions): Promise<{ url: string }> {
+  const baseURL = (opts.baseURL ?? "https://api.stripe.com").replace(/\/+$/, "");
+  const body = encodeForm({ customer: opts.customerId, return_url: opts.returnUrl });
+
+  const res = await fetch(`${baseURL}/v1/billing_portal/sessions`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${opts.secretKey}`,
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!res.ok) throw new Error(`Stripe billing portal ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const session = (await res.json()) as { url: string };
+  return { url: session.url };
+}
+
 /**
  * Resolve which Stripe Price to charge for a requested plan, using the same
  * price→plan map the webhook uses (inverted). Returns null for free/unknown.

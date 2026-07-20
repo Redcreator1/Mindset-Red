@@ -97,8 +97,8 @@ interface StripeSubscriptionObject {
 }
 
 export type SubscriptionOutcome =
-  | { action: "set-plan"; tenantKey: string; plan: PlanId }
-  | { action: "downgrade"; tenantKey: string; plan: "free" }
+  | { action: "set-plan"; tenantKey: string; plan: PlanId; stripeCustomerId?: string }
+  | { action: "downgrade"; tenantKey: string; plan: "free"; stripeCustomerId?: string }
   | { action: "ignored"; reason: string };
 
 /**
@@ -113,21 +113,24 @@ export function resolveSubscriptionEvent(
   const sub = event.data.object;
   const tenantKey = sub.metadata?.tenant_key;
   if (!tenantKey) return { action: "ignored", reason: "no tenant_key in subscription metadata" };
+  // Spread conditionally rather than always setting the key to `undefined` —
+  // keeps the outcome shape clean when a test/event omits `customer`.
+  const withCustomer = sub.customer ? { stripeCustomerId: sub.customer } : {};
 
   switch (event.type) {
     case "customer.subscription.created":
     case "customer.subscription.updated": {
       if (sub.status === "active" || sub.status === "trialing") {
         const priceId = sub.items?.data?.[0]?.price?.id;
-        return { action: "set-plan", tenantKey, plan: planForPrice(priceId, priceMap) };
+        return { action: "set-plan", tenantKey, plan: planForPrice(priceId, priceMap), ...withCustomer };
       }
       if (sub.status === "canceled" || sub.status === "unpaid" || sub.status === "past_due") {
-        return { action: "downgrade", tenantKey, plan: "free" };
+        return { action: "downgrade", tenantKey, plan: "free", ...withCustomer };
       }
       return { action: "ignored", reason: `subscription status '${sub.status}' not actionable` };
     }
     case "customer.subscription.deleted":
-      return { action: "downgrade", tenantKey, plan: "free" };
+      return { action: "downgrade", tenantKey, plan: "free", ...withCustomer };
     default:
       return { action: "ignored", reason: `event '${event.type}' not handled` };
   }

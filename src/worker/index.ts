@@ -7,7 +7,7 @@ import { ogImageBytes } from "../og-image.js";
 import { FAVICON_SVG } from "../favicon.js";
 import { renderRobotsTxt, renderSitemapXml, renderLlmsTxt } from "../seo.js";
 import { renderDashboard, summarizeTenant, type DashboardData } from "../dashboard.js";
-import { createCheckoutSession, priceForPlan } from "../checkout.js";
+import { createBillingPortalSession, createCheckoutSession, priceForPlan } from "../checkout.js";
 import { PLANS, resolveSubscriptionEvent, loadPriceMap, type PlanId } from "../billing.js";
 import { buildAppManifest, classifyAppEvent, type AppInstallationEvent } from "../githubapp.js";
 import { buildWorkosAuthorizationUrl, exchangeWorkosCode } from "../workos.js";
@@ -22,6 +22,7 @@ import {
   newOrgId,
   newTenantKey,
   isValidPlan,
+  tenantCanManageBilling,
   type KVLike,
   type Organization,
 } from "./kv.js";
@@ -286,8 +287,8 @@ export default {
         // tenant who happened to check out — every teammate shares it.
         const billedTenant = await store.get(outcome.tenantKey);
         const applied = billedTenant?.orgId
-          ? await store.setOrgPlan(billedTenant.orgId, outcome.plan)
-          : await store.setPlan(outcome.tenantKey, outcome.plan);
+          ? await store.setOrgPlan(billedTenant.orgId, outcome.plan, outcome.stripeCustomerId)
+          : await store.setPlan(outcome.tenantKey, outcome.plan, outcome.stripeCustomerId);
         return json(200, { ok: true, ...outcome, applied });
       }
       return json(200, { ok: true, ...outcome });
@@ -483,6 +484,33 @@ export default {
 
     if (path === "/v1/usage") {
       return json(200, await meter.report(tenant, org));
+    }
+
+    // Self-service billing management (cancel, change card, view invoices) —
+    // a Stripe-hosted page, no custom UI to build or secure. Never the ?key=
+    // fallback — this reaches Stripe's real cancel-my-subscription UI,
+    // pre-authenticated for the customer, so a leaked link would be as
+    // sensitive as a leaked checkout link.
+    if (path === "/v1/billing/portal") {
+      if (!tenantCanManageBilling(tenant)) {
+        return json(403, { error: "only the team owner can manage billing" });
+      }
+      if (!env.CTX_STRIPE_API_KEY) return json(503, { error: "billing portal not configured" });
+      const billedEntity = tenant.orgId ? org : tenant;
+      const stripeCustomerId = billedEntity?.stripeCustomerId;
+      if (!stripeCustomerId) {
+        return json(400, { error: "no Stripe customer on file yet — subscribe via /v1/signup first" });
+      }
+      try {
+        const session = await createBillingPortalSession({
+          secretKey: env.CTX_STRIPE_API_KEY,
+          customerId: stripeCustomerId,
+          returnUrl: `${baseUrl}/v1/dashboard`,
+        });
+        return json(200, { portalUrl: session.url });
+      } catch (err) {
+        return json(502, { error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     // Team: the org owner invites a teammate — mints a key sharing the same

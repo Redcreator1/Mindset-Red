@@ -221,6 +221,58 @@ test("Worker: ?key= authenticates the dashboard page (clickable from the success
   assert.equal(usageViaQuery.status, 401, "the ?key= fallback must stay scoped to the dashboard route");
 });
 
+test("Worker: GET /v1/billing/portal opens a Stripe-hosted session for a tenant with a Stripe customer on file", async () => {
+  const kv = new MemKV();
+  const store = new KvTenantStore(kv);
+  await store.upsert({ key: "sk-alice", name: "alice", repos: "*", plan: "pro", stripeCustomerId: "cus_alice" });
+  const env = { CTX_KV: kv, CTX_STRIPE_API_KEY: "sk_test_x" };
+
+  const realFetch = globalThis.fetch;
+  let captured: { auth?: string; body?: string } = {};
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const u = String(input instanceof Request ? input.url : input);
+    if (u === "https://api.stripe.com/v1/billing_portal/sessions") {
+      captured = { auth: (init?.headers as Record<string, string>)?.authorization, body: init?.body as string };
+      return new Response(JSON.stringify({ url: "https://billing.stripe.com/session/bps_1" }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    }
+    return realFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    const res = await worker.fetch(new Request("https://ctx.example.com/v1/billing/portal", {
+      headers: { authorization: "Bearer sk-alice" },
+    }), env);
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { portalUrl: string };
+    assert.equal(data.portalUrl, "https://billing.stripe.com/session/bps_1");
+    assert.equal(captured.auth, "Bearer sk_test_x");
+    assert.ok(captured.body!.includes("customer=cus_alice"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("Worker: GET /v1/billing/portal 400s without a Stripe customer on file, and refuses a non-owner team member", async () => {
+  const kv = new MemKV();
+  const store = new KvTenantStore(kv);
+  await store.upsert({ key: "sk-solo", name: "solo", repos: "*", plan: "free" });
+  await store.upsertOrg({ id: "org-1", name: "acme", repos: "*", plan: "pro", stripeCustomerId: "cus_acme" });
+  await store.upsert({ key: "sk-bob", name: "bob", repos: "*", orgId: "org-1", role: "member" });
+  const env = { CTX_KV: kv, CTX_STRIPE_API_KEY: "sk_test_x" };
+
+  const noCustomer = await worker.fetch(new Request("https://ctx.example.com/v1/billing/portal", {
+    headers: { authorization: "Bearer sk-solo" },
+  }), env);
+  assert.equal(noCustomer.status, 400);
+
+  const nonOwner = await worker.fetch(new Request("https://ctx.example.com/v1/billing/portal", {
+    headers: { authorization: "Bearer sk-bob" },
+  }), env);
+  assert.equal(nonOwner.status, 403);
+});
+
 test("Worker: KvTenantStore round-trips and setPlan works", async () => {
   const kv = new MemKV();
   const store = new KvTenantStore(kv);

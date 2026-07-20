@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
-import { createCheckoutSession, encodeForm, ensureStripeWebhook, newTenantKey, priceForPlan } from "../checkout.js";
+import { createBillingPortalSession, createCheckoutSession, encodeForm, ensureStripeWebhook, newTenantKey, priceForPlan } from "../checkout.js";
 import { createContextServer } from "../server.js";
 import { TenantStore } from "../tenants.js";
 import { indexCommits, writeMemory } from "../memory.js";
@@ -76,6 +76,49 @@ test("createCheckoutSession surfaces Stripe errors", async () => {
     await assert.rejects(
       () => createCheckoutSession({ secretKey: "sk", priceId: "bad", tenantKey: "t", successUrl: "a", cancelUrl: "b", baseURL }),
       /Stripe checkout 400/,
+    );
+  } finally {
+    mock.close();
+  }
+});
+
+test("createBillingPortalSession posts the customer id + return URL and returns the hosted URL", async () => {
+  let captured: { auth?: string; body?: string } = {};
+  const mock = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      captured = { auth: req.headers.authorization, body };
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ url: "https://billing.stripe.com/session/bps_test_123" }));
+    });
+  });
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseURL = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  try {
+    const session = await createBillingPortalSession({
+      secretKey: "sk_test_x", customerId: "cus_123", returnUrl: "https://app/dashboard", baseURL,
+    });
+    assert.equal(session.url, "https://billing.stripe.com/session/bps_test_123");
+    assert.equal(captured.auth, "Bearer sk_test_x");
+    assert.ok(captured.body!.includes("customer=cus_123"));
+    assert.ok(captured.body!.includes("return_url=https%3A%2F%2Fapp%2Fdashboard"));
+  } finally {
+    mock.close();
+  }
+});
+
+test("createBillingPortalSession surfaces Stripe errors (e.g. no portal configuration yet)", async () => {
+  const mock = createServer((_req, res) => {
+    res.statusCode = 400;
+    res.end(JSON.stringify({ error: { message: "default configuration has not been created" } }));
+  });
+  await new Promise<void>((r) => mock.listen(0, r));
+  const baseURL = `http://127.0.0.1:${(mock.address() as { port: number }).port}`;
+  try {
+    await assert.rejects(
+      () => createBillingPortalSession({ secretKey: "sk", customerId: "cus_1", returnUrl: "https://app", baseURL }),
+      /Stripe billing portal 400/,
     );
   } finally {
     mock.close();
@@ -236,5 +279,81 @@ test("checkout route is unavailable without a Stripe API key", async () => {
     assert.equal(res.status, 503);
   } finally {
     server.close();
+  }
+});
+
+// ---- GET /v1/billing/portal ----
+
+test("GET /v1/billing/portal opens a Stripe-hosted session for a tenant with a Stripe customer on file", async () => {
+  let captured: { auth?: string; body?: string } = {};
+  const stripe = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      captured = { auth: req.headers.authorization, body };
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ url: "https://billing.stripe.com/session/bps_1" }));
+    });
+  });
+  const stripeBase = await listen(stripe);
+
+  const repo = makeRepo("portalflow");
+  const store = new TenantStore([{ key: "sk-alice", name: "alice", repos: "*", plan: "pro", stripeCustomerId: "cus_alice" }]);
+  const server = createContextServer({ portalflow: repo }, {
+    tenantStore: store, stripeApiKey: "sk_test_x", stripeBaseURL: stripeBase,
+  });
+  const base = await listen(server);
+  try {
+    const res = await fetch(`${base}/v1/billing/portal`, { headers: { authorization: "Bearer sk-alice" } });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { portalUrl: string };
+    assert.equal(data.portalUrl, "https://billing.stripe.com/session/bps_1");
+    assert.equal(captured.auth, "Bearer sk_test_x");
+    assert.ok(captured.body!.includes("customer=cus_alice"));
+  } finally {
+    server.close();
+    stripe.close();
+  }
+});
+
+test("GET /v1/billing/portal 400s when the tenant has no Stripe customer on file yet (never subscribed)", async () => {
+  const repo = makeRepo("noportal");
+  const store = new TenantStore([{ key: "sk-alice", name: "alice", repos: "*", plan: "free" }]);
+  const server = createContextServer({ noportal: repo }, { tenantStore: store, stripeApiKey: "sk_test_x" });
+  const base = await listen(server);
+  try {
+    const res = await fetch(`${base}/v1/billing/portal`, { headers: { authorization: "Bearer sk-alice" } });
+    assert.equal(res.status, 400);
+  } finally {
+    server.close();
+  }
+});
+
+test("GET /v1/billing/portal refuses a non-owner team member and is unavailable without a Stripe API key", async () => {
+  const repo = makeRepo("portalperms");
+  const store = new TenantStore(
+    [
+      { key: "sk-owner", name: "owner", repos: "*", orgId: "org-1", role: "owner" },
+      { key: "sk-bob", name: "bob", repos: "*", orgId: "org-1", role: "member" },
+    ],
+    undefined,
+    [{ id: "org-1", name: "acme", repos: "*", plan: "pro", stripeCustomerId: "cus_acme" }],
+  );
+  const server = createContextServer({ portalperms: repo }, { tenantStore: store, stripeApiKey: "sk_test_x" });
+  const base = await listen(server);
+  try {
+    const forbidden = await fetch(`${base}/v1/billing/portal`, { headers: { authorization: "Bearer sk-bob" } });
+    assert.equal(forbidden.status, 403);
+  } finally {
+    server.close();
+  }
+
+  const server2 = createContextServer({ portalperms: repo }, { tenantStore: store });
+  const base2 = await listen(server2);
+  try {
+    const unconfigured = await fetch(`${base2}/v1/billing/portal`, { headers: { authorization: "Bearer sk-owner" } });
+    assert.equal(unconfigured.status, 503);
+  } finally {
+    server2.close();
   }
 });

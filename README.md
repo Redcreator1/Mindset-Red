@@ -165,7 +165,8 @@ et d'un serveur d'affichage, indisponibles dans ce sandbox.
 | `POST /v1/app/webhook` | Événements d'installation de l'App (HMAC vérifiée) : provisionne/déprovisionne un tenant automatiquement |
 | `GET /v1/app/installed?installation_id=…` | Redirection post-install : remet la clé API du tenant auto-provisionné (une seule fois) |
 | `GET /v1/checkout?plan=pro` | Crée un lien de paiement Stripe pour le tenant appelant (porte d'entrée paiement) — refusé (403) à un membre d'équipe non-owner |
-| `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant, ou de son **organisation** si c'est un siège d'équipe |
+| `GET /v1/billing/portal` | Ouvre une session **Stripe Customer Portal** (annuler, changer de carte, voir les factures — self-service, hébergé par Stripe) pour le tenant appelant — refusé (403) à un membre non-owner, 400 si aucun abonnement Stripe n'existe encore |
+| `POST /v1/stripe/webhook` | Événements d'abonnement Stripe (signature vérifiée) → change le plan du tenant (et retient son `customer` Stripe pour `/v1/billing/portal`), ou de son **organisation** si c'est un siège d'équipe |
 | `GET /v1/team/invite?name=…` | L'owner invite un coéquipier — clé mintée, quota et plan partagés (organisation), montrée une seule fois |
 | `GET /v1/team/remove?key=…` | L'owner retire un coéquipier de l'organisation (pas soi-même) |
 | `GET /v1/sso/login?org=…` | Redirige vers la connexion hébergée WorkOS AuthKit (SSO Entreprise) |
@@ -334,6 +335,7 @@ Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 - [x] v0.23 — **Rank v0** (`src/rank.ts`) : première brique de la Phase 4 ("Moat technique"). Pas un modèle entraîné — un reranker linéaire explicable au-dessus de la fusion RRF existante (`hybridSearch`), avec des poids réglés à la main (accord des deux moteurs de recherche, correspondance du titre avec la requête, décroissance de fraîcheur). Honnête sur la portée : entraîner un vrai modèle demande un jeu de données de pertinence réel (clics/retours d'usage) et du budget de calcul — ni l'un ni l'autre n'existe encore. Ce qui est livré ici est la partie réelle et testée faisable aujourd'hui : l'interface de scoring, et un reranker qui améliore mesurablement le RRF seul. Les poids sont explicitement la pièce prévue pour être remplacée plus tard par des poids appris. Branché directement dans `hybridSearch` — `ctx search --hybrid` et `mode=hybrid` en profitent automatiquement, aucun nouveau paramètre d'API.
 - [x] v0.24 — **Rank ML** (`src/rank-ml.ts`, `notebooks/train_rank_ml.py`) : succède à Rank v0 avec un vrai cross-encoder pré-entraîné (`cross-encoder/ms-marco-MiniLM-L-6-v2`), fine-tunable sur un T4 gratuit via Colab (notebook fourni) sur des paires faiblement labellisées tirées de l'historique du repo. **Node uniquement, décision assumée** : notre prod (Cloudflare Workers) n'a ni GPU ni moyen d'exécuter de l'inférence neuronale sans passer par un service payant (Workers AI ou un hébergement externe) — le Worker garde donc Rank v0 pour l'instant, écart de parité documenté plutôt que masqué. Chargement 100% local (`CTX_RANK_ML_MODEL_DIR`, `@huggingface/transformers` en `optionalDependencies`) : aucun appel réseau au runtime, jamais de HuggingFace au moment de la requête. Repli automatique et silencieux vers Rank v0 si le dossier de modèle est absent ou le chargement échoue — jamais de crash. Honnête sur les limites de vérification : la logique de blend/scoring (`mlRerank`) est testée (6 tests, reranker simulé) ; le câblage réel du pipeline `@huggingface/transformers` n'a pas pu être exécuté de bout en bout dans l'environnement où c'est écrit (huggingface.co et les binaires natifs de `sharp`/`onnxruntime` y sont bloqués par le proxy — confirmé par `curl`, même catégorie de blocage que JetBrains) — à vérifier après avoir fait tourner le notebook. Corrigé en route : le notebook utilisait initialement `@xenova/transformers` (nom historique du projet) et son ancien script `scripts/convert.py`, qui n'existe plus — le projet a déménagé vers `@huggingface/transformers` et l'export ONNX standard `optimum-onnx`, découvert en faisant réellement tourner le notebook et en lisant le vrai README du projet. Bénéfice inattendu du changement de paquet : la vulnérabilité critique `protobufjs` (transitive via `onnxruntime-web`) qu'`@xenova/transformers` traînait a disparu avec `@huggingface/transformers` — `npm audit` est repassé à 0 vulnérabilité.
 - [x] v0.25 — **`llms.txt`** (`GET /llms.txt`, convention llmstxt.org) : carte Markdown du site (résumé, dépôt GitHub, docs, tarifs, legal, blog) pour les agents/crawlers IA qui le lisent avant de crawler le HTML — préparation au référencement dans les annuaires MCP (awesome-mcp-servers, registre officiel MCP, Smithery, mcp.so, glama.ai). Mots-clés `mcp`/`model-context-protocol`/`mcp-server`/`cli` ajoutés à `package.json` pour la recherche npm. Mention obsolète corrigée dans le README (l'extension VS Code disait "mindset-ctx pas encore sur npm" — faux depuis la v0.18). Parité Node + Worker. 2 nouveaux tests — 144/144.
+- [x] v0.26 — **Stripe Customer Portal** (`GET /v1/billing/portal`) : un client (ou l'owner d'une équipe) peut annuler son abonnement, changer de carte ou voir ses factures lui-même, sur une page hébergée par Stripe — jusque-là seul l'opérateur pouvait le faire, à la main, dans le Dashboard Stripe. `Tenant`/`Organization` gagnent `stripeCustomerId`, rempli automatiquement par le webhook `/v1/stripe/webhook` (déjà en place, juste étendu). Même garde d'autorisation que `/v1/checkout` (`tenantCanManageBilling` — refusé à un membre d'équipe non-owner) et jamais accessible via le fallback `?key=` du dashboard : une session portal, une fois son lien en main, permet d'annuler un abonnement sans authentification supplémentaire côté Stripe — aussi sensible qu'un lien de paiement. Nécessite une seule configuration manuelle côté Stripe Dashboard (Settings → Billing → Customer portal) — aucune API ne permet de la créer à la place de l'opérateur. Parité Node + Worker. 8 nouveaux tests — 153/153.
 - [ ] Extension JetBrains (stack différente : Kotlin/Gradle plutôt que TypeScript — mérite sa propre session) ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
@@ -359,20 +361,26 @@ node dist/cli.js stripe webhook https://<ton-worker>.workers.dev/v1/stripe/webho
 npx wrangler secret put CTX_STRIPE_SECRET
 npx wrangler deploy
 
-# 4. (optionnel) GitHub App — provisioning automatique par install, même sur
+# 4. (une seule fois, à la main) Activer le Customer Portal pour que
+#    GET /v1/billing/portal fonctionne : Dashboard Stripe → Settings →
+#    Billing → Customer portal → Activate. Sans ça, Stripe refuse de créer
+#    une session portal (erreur claire, pas un plantage) — aucune API ne
+#    permet de configurer ça à la place du Dashboard.
+
+# 5. (optionnel) GitHub App — provisioning automatique par install, même sur
 #    le Worker déployé (pas seulement en self-hosted) :
 npx wrangler secret put CTX_WEBHOOK_SECRET   # même secret que celui déclaré dans l'App GitHub
 npx wrangler deploy
 #    Crée l'App depuis le manifest : POST https://<ton-worker>.workers.dev/v1/app/manifest
 #    vers https://github.com/settings/apps/new
 
-# 5. (optionnel) SSO Entreprise via WorkOS — créer une App sur workos.com,
+# 6. (optionnel) SSO Entreprise via WorkOS — créer une App sur workos.com,
 #    déclarer https://<ton-worker>.workers.dev/v1/sso/callback comme redirect URI :
 npx wrangler secret put WORKOS_CLIENT_ID
 npx wrangler secret put WORKOS_API_KEY
 npx wrangler deploy
 
-# 6. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
+# 7. C'est tout. /pricing est publique, /v1/signup prend l'argent, la clé
 #    API est activée automatiquement par le webhook (Stripe, GitHub App ou SSO).
 #    Zéro humain dans la boucle.
 ```
