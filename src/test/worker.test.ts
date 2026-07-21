@@ -94,6 +94,10 @@ test("Worker: /terms and /privacy render publicly, no auth required", async () =
   const privacy = await worker.fetch(new Request("https://ctx.example.com/privacy"), env);
   assert.equal(privacy.status, 200);
   assert.match(await privacy.text(), /Stripe/);
+
+  const security = await worker.fetch(new Request("https://ctx.example.com/security"), env);
+  assert.equal(security.status, 200);
+  assert.match(await security.text(), /npm.?audit/i);
 });
 
 test("Worker: /support renders publicly; /v1/support/chat 503s unconfigured and answers when configured", async () => {

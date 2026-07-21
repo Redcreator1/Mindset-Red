@@ -2,6 +2,7 @@ import { renderAppInstalled, renderPricing, renderSuccess } from "../pricing.js"
 import { renderHome, renderDocs, render404 } from "../home.js";
 import { renderBlogIndex, renderBlogPost } from "../blog.js";
 import { renderTerms, renderPrivacy } from "../legal.js";
+import { renderSecurity } from "../security.js";
 import { renderSupport, askSupportBot, SupportChatError, type SupportChatMessage } from "../support.js";
 import { ogImageBytes } from "../og-image.js";
 import { FAVICON_SVG } from "../favicon.js";
@@ -163,6 +164,10 @@ export default {
 
     if (path === "/privacy") {
       return html(200, renderPrivacy(baseUrl));
+    }
+
+    if (path === "/security") {
+      return html(200, renderSecurity(baseUrl));
     }
 
     if (path === "/support") {

@@ -2,7 +2,7 @@ import { blogSlugs, blogPostsMeta } from "./blog.js";
 import { REPO_URL } from "./home.js";
 
 /** Public, crawlable pages — API routes (/v1/*) are deliberately excluded. */
-const STATIC_PATHS = ["/", "/docs", "/pricing", "/blog", "/terms", "/privacy", "/support"];
+const STATIC_PATHS = ["/", "/docs", "/pricing", "/blog", "/terms", "/privacy", "/security", "/support"];
 
 export function renderRobotsTxt(baseUrl?: string): string {
   const base = baseUrl?.replace(/\/+$/, "");
@@ -46,8 +46,9 @@ export function renderLlmsTxt(baseUrl: string): string {
 - [Documentation](${base}/docs): point d'entrée vers le README et les docs du repo
 - [Tarifs](${base}/pricing): plans du mode hébergé (self-hosted toujours gratuit et illimité)
 
-## Legal
+## Sécurité & Legal
 
+- [Sécurité](${base}/security): posture de sécurité vérifiable (tests, dépendances, revues, contrôles)
 - [Conditions d'utilisation](${base}/terms)
 - [Politique de confidentialité](${base}/privacy)
 - [Support](${base}/support)
