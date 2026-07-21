@@ -9,9 +9,6 @@
 
 export const REPO_URL = "https://github.com/Redcreator1/Mindset-Red";
 
-/** GitHub Sponsors page — linked as a plain styled link (never the iframe embed), keeping the site free of third-party embeds/tracking. */
-export const SPONSOR_URL = "https://github.com/sponsors/Redcreator1";
-
 /** Shared support contact — same address already used for Enterprise inquiries on /pricing. */
 export const SUPPORT_EMAIL = "mindset22633@gmail.com";
 
@@ -82,7 +79,7 @@ ${opts.body}
 <footer>
   Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
   <a href="${REPO_URL}">GitHub</a> · <a href="/docs">Documentation</a> · <a href="/pricing">Tarifs</a> · <a href="/blog">Blog</a> · <a href="/v1/dashboard">Dashboard</a><br>
-  <a href="/security">Sécurité</a> · <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a> · <a href="/support">Support</a> · <a href="${SPONSOR_URL}">Sponsoriser 💜</a>
+  <a href="/security">Sécurité</a> · <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a> · <a href="/support">Support</a>
 </footer>
 </body></html>`;
 }

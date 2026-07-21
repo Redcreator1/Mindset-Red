@@ -1,6 +1,0 @@
-# GitHub renders a native "Sponsor" button on the repo from this file — no
-# iframe, no third-party script, no tracking (consistent with the site's
-# zero-external-embed principle). Add more platforms below once the accounts
-# exist (e.g. ko_fi: yourname, open_collective: yourproject) — each is just a
-# username GitHub links to; leave a key out entirely rather than blank.
-github: [Redcreator1]
