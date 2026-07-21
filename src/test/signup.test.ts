@@ -173,6 +173,9 @@ test("full public signup flow: pricing → signup redirects to Stripe → succes
     const privacy = await fetch(`${base}/privacy`);
     assert.equal(privacy.status, 200);
     assert.match(await privacy.text(), /Stripe/);
+    const security = await fetch(`${base}/security`);
+    assert.equal(security.status, 200);
+    assert.match(await security.text(), /npm.?audit/i);
 
     // /support renders publicly; /v1/support/chat 503s since anthropicApiKey
     // isn't configured on this particular server instance (covered
