@@ -297,23 +297,6 @@ npm test   # build + tests (node:test)
 Ce repo est **dogfoodé** : ses propres `CLAUDE.md`, `AGENTS.md` et
 `docs/ARCHITECTURE.md` sont générés par l'outil lui-même.
 
-## Soutenir le projet
-
-mindset-ctx est open source (MIT) et le restera. Si l'outil vous est utile,
-vous pouvez soutenir son développement via
-[GitHub Sponsors](https://github.com/sponsors/Redcreator1) :
-
-- **Particuliers** — un soutien ponctuel ou mensuel, pour que le projet
-  continue d'avancer.
-- **Entreprises** — un palier dédié qui place votre logo ici et sur
-  [mindsetctx.com](https://mindsetctx.com) : une façon visible de soutenir un
-  outil dont votre équipe dépend, tout en montrant que vous financez
-  l'écosystème que vous utilisez.
-
-Le sponsoring est un complément, pas le modèle : le produit lui-même a ses
-plans payants (voir [/pricing](https://mindsetctx.com/pricing)). Mais chaque
-soutien, même petit, aide un projet solo à tenir dans la durée.
-
 ## Roadmap
 
 - [x] v0.1 — analyse de repo, génération des 5 fichiers de contexte, memory layer (commits), API HTTP, CLI
@@ -354,7 +337,6 @@ soutien, même petit, aide un projet solo à tenir dans la durée.
 - [x] v0.25 — **`llms.txt`** (`GET /llms.txt`, convention llmstxt.org) : carte Markdown du site (résumé, dépôt GitHub, docs, tarifs, legal, blog) pour les agents/crawlers IA qui le lisent avant de crawler le HTML — préparation au référencement dans les annuaires MCP (awesome-mcp-servers, registre officiel MCP, Smithery, mcp.so, glama.ai). Mots-clés `mcp`/`model-context-protocol`/`mcp-server`/`cli` ajoutés à `package.json` pour la recherche npm. Mention obsolète corrigée dans le README (l'extension VS Code disait "mindset-ctx pas encore sur npm" — faux depuis la v0.18). Parité Node + Worker. 2 nouveaux tests — 144/144.
 - [x] v0.26 — **Stripe Customer Portal** (`GET /v1/billing/portal`) : un client (ou l'owner d'une équipe) peut annuler son abonnement, changer de carte ou voir ses factures lui-même, sur une page hébergée par Stripe — jusque-là seul l'opérateur pouvait le faire, à la main, dans le Dashboard Stripe. `Tenant`/`Organization` gagnent `stripeCustomerId`, rempli automatiquement par le webhook `/v1/stripe/webhook` (déjà en place, juste étendu). Même garde d'autorisation que `/v1/checkout` (`tenantCanManageBilling` — refusé à un membre d'équipe non-owner) et jamais accessible via le fallback `?key=` du dashboard : une session portal, une fois son lien en main, permet d'annuler un abonnement sans authentification supplémentaire côté Stripe — aussi sensible qu'un lien de paiement. Nécessite une seule configuration manuelle côté Stripe Dashboard (Settings → Billing → Customer portal) — aucune API ne permet de la créer à la place de l'opérateur. Parité Node + Worker. 8 nouveaux tests — 153/153.
 - [x] v0.27 — **page `/security` publique** : rend visible et vérifiable la posture de sécurité au lieu de la laisser enfouie dans les commits — open source/MIT, 150+ tests en CI sur chaque push (Node 20/22), `npm audit` à 0, principe « le code ne quitte jamais votre machine », contrôles techniques (signatures webhooks constant-time, cookies `SameSite=Strict`, porte de paiement), méthode d'audit en deux passes (lien vers l'article). Discipline anti-survente verrouillée par un test : la page **liste ce qu'elle ne prétend pas** (pas de SOC 2, pas de pentest tiers, pas de bug bounty) — un futur commit ne peut pas silencieusement sur-vendre une certification absente. Ajoutée au sitemap, à `llms.txt` et au pied de page. Parité Node + Worker. 3 nouveaux tests — 155/155.
-- [x] v0.28 — **GitHub Sponsors** : `.github/FUNDING.yml` (bouton Sponsor natif sur le repo, aucun iframe ni tracking) + lien stylé « Sponsoriser » dans le pied de page du site (jamais l'embed iframe, cohérent avec le principe zéro-embed-tiers du site) + section « Soutenir le projet » dans le README invitant particuliers **et** entreprises (palier logo). Complément de revenu open source assumé — pas un substitut aux plans payants.
 - [ ] Extension JetBrains (stack différente : Kotlin/Gradle plutôt que TypeScript — mérite sa propre session) ; intégrations Slack/Linear/Notion ; programme de referral — voir `docs/VISION.md` (bloqués sur un tooling différent, ou des identifiants que seul le fondateur peut créer)
 
 ## Déploiement en production (0 → premier euro)
