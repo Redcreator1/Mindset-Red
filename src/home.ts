@@ -217,12 +217,14 @@ npx mindset-ctx mcp .       # expose tout ça à Claude Code / Cursor via MCP</p
 }
 
 interface DocSection {
+  id: string;
   title: string;
   items: { label: string; href: string; note?: string }[];
 }
 
 const DOC_SECTIONS: DocSection[] = [
   {
+    id: "demarrer",
     title: "Démarrer",
     items: [
       { label: "Installation & premiers pas", href: `${REPO_URL}#installation` },
@@ -231,6 +233,7 @@ const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    id: "integrations-agents",
     title: "Intégrations agents",
     items: [
       { label: "Claude Code (MCP)", href: `${REPO_URL}#mcp-model-context-protocol` },
@@ -238,6 +241,7 @@ const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    id: "sources-de-code",
     title: "Sources de code supportées",
     items: [
       { label: "GitHub — PRs, issues, discussions, App", href: `${REPO_URL}#repos-priv%C3%A9s--comment-les-devs-lutilisent` },
@@ -246,6 +250,7 @@ const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    id: "hebergement",
     title: "Hébergement",
     items: [
       { label: "Self-hosted (gratuit, votre code reste chez vous)", href: `${REPO_URL}#repos-priv%C3%A9s--comment-les-devs-lutilisent` },
@@ -254,6 +259,7 @@ const DOC_SECTIONS: DocSection[] = [
     ],
   },
   {
+    id: "reference-api",
     title: "Référence API",
     items: [
       { label: "Toutes les routes HTTP", href: `${REPO_URL}#api-hors-cli` },
@@ -265,9 +271,11 @@ const DOC_SECTIONS: DocSection[] = [
 
 /** Documentation index — links out to the (public) repo's README/docs rather than duplicating content. */
 export function renderDocs(baseUrl?: string): string {
+  const tabs = DOC_SECTIONS.map((s) => `<a href="#${esc(s.id)}">${esc(s.title)}</a>`).join("");
+
   const sections = DOC_SECTIONS.map(
     (s) => `
-    <div class="doc-card">
+    <div class="doc-card" id="${esc(s.id)}">
       <h2>${esc(s.title)}</h2>
       <ul>
         ${s.items.map((it) => `<li><a href="${esc(it.href)}">${esc(it.label)}</a></li>`).join("")}
@@ -277,23 +285,58 @@ export function renderDocs(baseUrl?: string): string {
 
   const body = `
 <style>
-  main.docs { max-width: 860px; margin: 0 auto; padding: 32px 32px 64px; }
-  main.docs h1 { font-size: 28px; margin: 8px 0 8px; }
-  main.docs > p { color: #64748b; margin: 0 0 36px; max-width: 60ch; }
-  .doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-  .doc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  main.docs { max-width: 900px; margin: 0 auto; padding: 0 32px 64px; }
+  .docs-hero { padding: 72px 0 32px; }
+  .docs-hero h1 { font-size: clamp(32px, 5vw, 48px); font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.08; margin: 0 0 14px; }
+  .docs-hero h1 .accent { color: #2563eb; }
+  .docs-hero .sub { color: #475569; font-size: 17px; max-width: 60ch; margin: 0 0 28px; }
+  .doc-search { display: block; width: 100%; max-width: 420px; background: #fff; border: 1px solid #cbd5e1;
+    border-radius: 8px; color: #1e293b; padding: 11px 14px; font-size: 14.5px; margin-bottom: 20px; }
+  .doc-search:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
+  .doc-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 20px; }
+  .doc-tabs a { font-size: 13.5px; font-weight: 600; color: #475569; text-decoration: none;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 999px; padding: 7px 16px; }
+  .doc-tabs a:hover { border-color: #2563eb; color: #2563eb; }
+  .doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;
+    padding: 32px 0 8px; scroll-margin-top: 20px; }
+  .doc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04); scroll-margin-top: 20px; }
   .doc-card h2 { margin: 0 0 12px; font-size: 15px; color: #2563eb; }
   .doc-card ul { list-style: none; margin: 0; padding: 0; }
   .doc-card li { padding: 7px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
   .doc-card li:last-child { border-bottom: none; }
+  .doc-empty { color: #64748b; font-size: 14px; padding: 8px 0 32px; }
 </style>
 <main class="docs">
-  <h1>Documentation</h1>
-  <p>La doc complète vit dans le README du repo (public) — organisée ici par tâche
-  plutôt que dupliquée. Le code source de chaque intégration est à côté, si vous
-  voulez vérifier exactement ce qui se passe.</p>
-  <div class="doc-grid">${sections}</div>
-</main>`;
+  <section class="docs-hero">
+    <h1>Centre de <span class="accent">documentation</span></h1>
+    <p class="sub">La doc complète vit dans le README du repo (public) — organisée ici par tâche
+    plutôt que dupliquée. Le code source de chaque intégration est à côté, si vous voulez
+    vérifier exactement ce qui se passe.</p>
+    <input class="doc-search" id="doc-search" type="search" placeholder="Rechercher dans la documentation…" aria-label="Rechercher dans la documentation">
+    <nav class="doc-tabs" aria-label="Parcourir par catégorie">${tabs}</nav>
+  </section>
+  <div class="doc-grid" id="doc-grid">${sections}</div>
+  <p class="doc-empty" id="doc-empty" hidden>Aucun résultat pour cette recherche.</p>
+</main>
+<script>
+(function () {
+  var search = document.getElementById("doc-search");
+  var cards = Array.prototype.slice.call(document.querySelectorAll(".doc-card"));
+  var empty = document.getElementById("doc-empty");
+  search.addEventListener("input", function () {
+    var q = search.value.trim().toLowerCase();
+    var visible = 0;
+    cards.forEach(function (card) {
+      var match = !q || card.textContent.toLowerCase().indexOf(q) !== -1;
+      card.style.display = match ? "" : "none";
+      if (match) visible++;
+    });
+    empty.hidden = visible !== 0;
+  });
+})();
+</script>`;
   return shell({
     title: "Documentation — mindset-ctx",
     description: "Installation, génération de contexte, mémoire du projet, intégrations Claude Code/Cursor, hébergement — toute la doc de mindset-ctx.",
