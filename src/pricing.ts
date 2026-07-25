@@ -1,5 +1,5 @@
 import { PLANS, type PlanId } from "./billing.js";
-import { ogMeta, SUPPORT_EMAIL } from "./home.js";
+import { ogMeta, REPO_URL, SUPPORT_EMAIL } from "./home.js";
 
 /**
  * Public pricing page and self-service signup — the "front door" that lets
@@ -95,8 +95,20 @@ ${ogMeta({
   .card.primary .cta { background: #2563eb; color: #fff; border-color: #2563eb; }
   .cta:hover { filter: brightness(1.04); }
   .cta:disabled { opacity: .5; cursor: not-allowed; }
-  footer { padding: 32px; text-align: center; color: #64748b; font-size: 13px; background: #f1f5f9; border-top: 1px solid #e2e8f0; }
-  footer a { color: #475569; }
+  footer.site-foot { background: #060a14; border-top: 1px solid #1e293b; color: #94a3b8; margin-top: 24px; }
+  .foot-inner { max-width: 1100px; margin: 0 auto; padding: 48px 32px 32px;
+    display: flex; flex-wrap: wrap; gap: 48px; justify-content: space-between; }
+  .foot-brand { max-width: 320px; }
+  .foot-brand .brand { color: #f1f5f9; font-weight: 700; font-size: 16px; text-decoration: none; }
+  .foot-brand .brand .dot { color: #d4a24c; }
+  .foot-brand p { margin: 12px 0 0; font-size: 13px; color: #64748b; line-height: 1.6; }
+  .foot-cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  .foot-col h4 { margin: 0 0 12px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+    color: #64748b; font-weight: 600; }
+  .foot-col a { display: block; color: #94a3b8; text-decoration: none; font-size: 14px; padding: 4px 0; }
+  .foot-col a:hover { color: #f1f5f9; }
+  .foot-bottom { max-width: 1100px; margin: 0 auto; padding: 20px 32px; border-top: 1px solid #1e293b;
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; font-size: 12.5px; color: #64748b; }
 </style></head>
 <body>
 <header class="pricing-head">
@@ -104,10 +116,36 @@ ${ogMeta({
   <p class="sub">Context-as-a-Service pour vos repos. Zéro configuration, MCP-native pour Claude Code et Cursor. Votre code reste chez vous.</p>
 </header>
 <main><div class="grid">${cards}</div></main>
-<footer>
-  Repos privés → <strong>self-hosted, votre code ne quitte jamais votre machine.</strong><br>
-  Pro/Team : 14 jours satisfait ou remboursé. <a href="/terms">CGV</a> · <a href="/privacy">Confidentialité</a><br>
-  <a href="https://github.com/Redcreator1/Mindset-Red">GitHub</a> · <a href="/v1/dashboard">Dashboard</a> · <a href="/support">Support</a>
+<footer class="site-foot">
+  <div class="foot-inner">
+    <div class="foot-brand">
+      <a class="brand" href="/">mindset<span class="dot">·</span>ctx</a>
+      <p>Repos privés → self-hosted, votre code ne quitte jamais votre machine.<br>Pro/Team : 14 jours satisfait ou remboursé.</p>
+    </div>
+    <div class="foot-cols">
+      <div class="foot-col">
+        <h4>Produit</h4>
+        <a href="/docs">Documentation</a>
+        <a href="/blog">Blog</a>
+        <a href="/v1/dashboard">Dashboard</a>
+      </div>
+      <div class="foot-col">
+        <h4>Ressources</h4>
+        <a href="${REPO_URL}">GitHub</a>
+        <a href="/security">Sécurité</a>
+        <a href="/support">Support</a>
+      </div>
+      <div class="foot-col">
+        <h4>Légal</h4>
+        <a href="/terms">CGV</a>
+        <a href="/privacy">Confidentialité</a>
+      </div>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>© 2026 mindset-ctx</span>
+    <span>Open source · MIT</span>
+  </div>
 </footer>
 </body></html>`;
 }

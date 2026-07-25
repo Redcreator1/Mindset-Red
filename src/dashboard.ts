@@ -114,7 +114,9 @@ export function renderDashboard(data: DashboardData): string {
   .bar { background: #e2e8f0; border-radius: 5px; height: 8px; width: 120px; overflow: hidden; }
   .fill { height: 100%; border-radius: 5px; transition: width .3s; }
   .empty { color: #64748b; font-style: italic; }
-  footer { padding: 24px 32px; color: #64748b; font-size: 12px; text-align: center; }
+  footer { padding: 24px 32px; color: #64748b; font-size: 12px; text-align: center;
+    background: #060a14; border-top: 1px solid #1e293b; margin-top: 24px; }
+  footer a { color: #94a3b8; }
 </style></head>
 <body>
 <header><h1>${esc(data.service)}</h1><span class="tag">Context-as-a-Service · dashboard</span></header>
