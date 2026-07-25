@@ -15,19 +15,19 @@ const SECURITY_STYLE = `
   main.sec { max-width: 760px; margin: 0 auto; padding: 32px 32px 64px; }
   main.sec h1 { font-size: 28px; margin: 8px 0 6px; }
   main.sec .updated { color: #64748b; font-size: 13px; margin: 0 0 28px; }
-  main.sec h2 { font-size: 18px; margin: 34px 0 12px; color: #e2e8f0; }
-  main.sec p, main.sec li { color: #cbd5e1; font-size: 14.5px; line-height: 1.7; }
+  main.sec h2 { font-size: 18px; margin: 34px 0 12px; color: #1e293b; }
+  main.sec p, main.sec li { color: #334155; font-size: 14.5px; line-height: 1.7; }
   main.sec ul { padding-left: 20px; margin: 8px 0; }
   main.sec li { margin: 5px 0; }
-  main.sec code { background: #1e293b; border-radius: 5px; padding: 1px 6px; font-size: .92em; }
+  main.sec code { background: #f1f5f9; color: #1e293b; border-radius: 5px; padding: 1px 6px; font-size: .92em; }
   main.sec .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin: 24px 0 8px; }
-  main.sec .fact { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 16px 18px; }
-  main.sec .fact .n { font-size: 26px; font-weight: 800; color: #60a5fa; }
-  main.sec .fact .l { color: #94a3b8; font-size: 13px; margin-top: 4px; }
-  main.sec .verify { background: #0f1830; border: 1px solid #1e293b; border-left: 3px solid #2563eb;
-    border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13.5px; color: #93c5fd; }
-  main.sec .verify code { background: #1e293b; color: #cbd5e1; }
-  main.sec .limits { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 4px 22px 12px; margin-top: 12px; }
+  main.sec .fact { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  main.sec .fact .n { font-size: 26px; font-weight: 800; color: #2563eb; }
+  main.sec .fact .l { color: #64748b; font-size: 13px; margin-top: 4px; }
+  main.sec .verify { background: #eff6ff; border: 1px solid #bfdbfe; border-left: 3px solid #2563eb;
+    border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13.5px; color: #1d4ed8; }
+  main.sec .verify code { background: #dbeafe; color: #1e293b; }
+  main.sec .limits { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 4px 22px 12px; margin-top: 12px; }
 </style>`;
 
 export function renderSecurity(baseUrl?: string): string {

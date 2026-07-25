@@ -351,12 +351,12 @@ export function renderBlogIndex(baseUrl?: string): string {
 <style>
   main.blog { max-width: 760px; margin: 0 auto; padding: 32px 32px 64px; }
   main.blog h1 { font-size: 28px; margin: 8px 0 28px; }
-  .post-card { display: block; background: #111a2e; border: 1px solid #1e293b; border-radius: 12px;
-    padding: 22px 24px; margin-bottom: 16px; text-decoration: none; color: inherit; }
+  .post-card { display: block; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 22px 24px; margin-bottom: 16px; text-decoration: none; color: inherit; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   .post-card:hover { border-color: #2563eb; }
   .post-card time { font-size: 13px; color: #64748b; font-family: ui-monospace, monospace; }
-  .post-card h2 { margin: 6px 0 8px; font-size: 19px; color: #e2e8f0; }
-  .post-card p { margin: 0; color: #94a3b8; font-size: 14px; }
+  .post-card h2 { margin: 6px 0 8px; font-size: 19px; color: #1e293b; }
+  .post-card p { margin: 0; color: #64748b; font-size: 14px; }
 </style>
 <main class="blog">
   <h1>Blog</h1>
@@ -382,11 +382,12 @@ export function renderBlogPost(slug: string, baseUrl?: string): string | null {
   main.post .back { display: inline-block; margin-bottom: 20px; font-size: 14px; }
   main.post h1 { font-size: 30px; line-height: 1.25; margin: 0 0 8px; }
   main.post time { display: block; font-size: 13px; color: #64748b; font-family: ui-monospace, monospace; margin-bottom: 28px; }
-  main.post p { color: #cbd5e1; font-size: 16px; line-height: 1.7; margin: 0 0 20px; }
-  main.post h2 { font-size: 20px; margin: 36px 0 12px; color: #e2e8f0; }
-  main.post code { background: #111a2e; border-radius: 4px; padding: 2px 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; }
-  main.post pre { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 18px 20px;
+  main.post p { color: #334155; font-size: 16px; line-height: 1.7; margin: 0 0 20px; }
+  main.post h2 { font-size: 20px; margin: 36px 0 12px; color: #1e293b; }
+  main.post code { background: #f1f5f9; color: #1e293b; border-radius: 4px; padding: 2px 6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; }
+  main.post pre { background: #0b1220; border: 1px solid #1e293b; border-radius: 10px; padding: 18px 20px;
     overflow-x: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; color: #cbd5e1; margin: 0 0 20px; }
+  main.post pre code { background: transparent; color: inherit; padding: 0; }
   main.post svg { display: block; margin: 28px 0; }
 </style>
 <main class="post">

@@ -91,29 +91,30 @@ export function renderDashboard(data: DashboardData): string {
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(data.service)} — dashboard</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: #0b1220; color: #e2e8f0; }
-  header { padding: 24px 32px; border-bottom: 1px solid #1e293b; display: flex; align-items: baseline; gap: 16px; }
+    background: #f8fafc; color: #1e293b; }
+  header { padding: 24px 32px; background: #060a14; color: #f1f5f9; border-bottom: 1px solid #1e293b; display: flex; align-items: baseline; gap: 16px; }
+  header h1 { color: #f1f5f9; }
   h1 { margin: 0; font-size: 20px; }
-  .tag { color: #64748b; font-size: 13px; }
+  .tag { color: #94a3b8; font-size: 13px; }
   main { padding: 24px 32px; max-width: 1000px; margin: 0 auto; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 32px; }
-  .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; padding: 16px 20px; }
-  .card .n { font-size: 28px; font-weight: 700; }
-  .card .l { color: #94a3b8; font-size: 13px; margin-top: 4px; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; margin: 28px 0 12px; }
-  table { width: 100%; border-collapse: collapse; background: #111a2e; border: 1px solid #1e293b; border-radius: 10px; overflow: hidden; }
-  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid #1e293b; }
-  th { color: #94a3b8; font-weight: 600; font-size: 13px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  .card .n { font-size: 28px; font-weight: 700; color: #1e293b; }
+  .card .l { color: #64748b; font-size: 13px; margin-top: 4px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .05em; color: #64748b; margin: 28px 0 12px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid #e2e8f0; }
+  th { color: #64748b; font-weight: 600; font-size: 13px; background: #f8fafc; }
   tr:last-child td { border-bottom: none; }
-  .chip { background: #1e293b; border-radius: 6px; padding: 2px 8px; font-size: 12px; margin-right: 4px; white-space: nowrap; }
+  .chip { background: #f1f5f9; color: #334155; border-radius: 6px; padding: 2px 8px; font-size: 12px; margin-right: 4px; white-space: nowrap; }
   .plan { color: #fff; border-radius: 6px; padding: 2px 10px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
-  .bar { background: #1e293b; border-radius: 5px; height: 8px; width: 120px; overflow: hidden; }
+  .bar { background: #e2e8f0; border-radius: 5px; height: 8px; width: 120px; overflow: hidden; }
   .fill { height: 100%; border-radius: 5px; transition: width .3s; }
   .empty { color: #64748b; font-style: italic; }
-  footer { padding: 24px 32px; color: #475569; font-size: 12px; text-align: center; }
+  footer { padding: 24px 32px; color: #64748b; font-size: 12px; text-align: center; }
 </style></head>
 <body>
 <header><h1>${esc(data.service)}</h1><span class="tag">Context-as-a-Service · dashboard</span></header>
