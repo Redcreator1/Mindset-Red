@@ -70,36 +70,36 @@ ${ogMeta({
     path: "/pricing",
   })}
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: #0b1220; color: #e2e8f0; }
-  header { padding: 48px 32px 24px; text-align: center; }
-  h1 { margin: 0 0 8px; font-size: 32px; }
+    background: #f8fafc; color: #1e293b; }
+  header.pricing-head { padding: 48px 32px 24px; text-align: center; background: #060a14; color: #f1f5f9; }
+  h1 { margin: 0 0 8px; font-size: 32px; color: #f1f5f9; }
   .sub { color: #94a3b8; max-width: 640px; margin: 0 auto; }
   main { padding: 32px; max-width: 1200px; margin: 0 auto; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-  .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; padding: 24px;
-    display: flex; flex-direction: column; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px;
+    display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   .card.primary { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
-  h3 { margin: 0 0 12px; font-size: 18px; }
+  h3 { margin: 0 0 12px; font-size: 18px; color: #1e293b; }
   .price { margin-bottom: 20px; }
-  .amount { font-size: 34px; font-weight: 700; }
-  .int { color: #94a3b8; font-size: 15px; }
+  .amount { font-size: 34px; font-weight: 700; color: #1e293b; }
+  .int { color: #64748b; font-size: 15px; }
   ul { list-style: none; padding: 0; margin: 0 0 24px; flex: 1; }
-  li { padding: 6px 0; color: #cbd5e1; border-bottom: 1px solid #1e293b; }
+  li { padding: 6px 0; color: #475569; border-bottom: 1px solid #e2e8f0; }
   li:last-child { border-bottom: none; }
-  .cta { display: block; text-align: center; background: #1e293b; color: #e2e8f0;
+  .cta { display: block; text-align: center; background: #f1f5f9; color: #1e293b;
     padding: 12px 16px; border-radius: 10px; text-decoration: none; font-weight: 600;
-    border: none; cursor: pointer; font-size: 15px; }
-  .card.primary .cta { background: #2563eb; }
-  .cta:hover { filter: brightness(1.15); }
+    border: 1px solid #e2e8f0; cursor: pointer; font-size: 15px; }
+  .card.primary .cta { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .cta:hover { filter: brightness(1.04); }
   .cta:disabled { opacity: .5; cursor: not-allowed; }
-  footer { padding: 32px; text-align: center; color: #475569; font-size: 13px; }
-  footer a { color: #64748b; }
+  footer { padding: 32px; text-align: center; color: #64748b; font-size: 13px; background: #f1f5f9; border-top: 1px solid #e2e8f0; }
+  footer a { color: #475569; }
 </style></head>
 <body>
-<header>
+<header class="pricing-head">
   <h1>mindset-ctx</h1>
   <p class="sub">Context-as-a-Service pour vos repos. Zéro configuration, MCP-native pour Claude Code et Cursor. Votre code reste chez vous.</p>
 </header>
@@ -121,13 +121,14 @@ export function renderSuccess(tenantKey: string, baseUrl = ""): string {
 <html lang="fr"><head><meta charset="utf-8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Bienvenue — mindset-ctx</title>
 <style>
   body { margin:0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
-    background: #0b1220; color: #e2e8f0; padding: 48px 32px; }
-  main { max-width: 640px; margin: 0 auto; background: #111a2e;
-    border: 1px solid #1e293b; border-radius: 14px; padding: 32px; }
+    background: #f8fafc; color: #1e293b; padding: 48px 32px; }
+  main { max-width: 640px; margin: 0 auto; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 14px; padding: 32px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   h1 { margin: 0 0 16px; }
-  code { background: #0b1220; padding: 8px 12px; border-radius: 6px; display: block;
+  code { background: #0b1220; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; display: block;
     word-break: break-all; font-family: ui-monospace, "SF Mono", Menlo, monospace; margin: 8px 0 20px; }
-  .warn { color: #fbbf24; font-size: 13px; }
+  .warn { color: #b45309; font-size: 13px; }
+  a { color: #2563eb; }
 </style></head>
 <body><main>
   <h1>✅ Paiement validé</h1>
@@ -137,7 +138,7 @@ export function renderSuccess(tenantKey: string, baseUrl = ""): string {
   <p>Utilisation — vérifiez votre quota :</p>
   <code>curl -H "Authorization: Bearer ${esc(tenantKey)}" ${esc(apiBase)}/v1/usage</code>
   <p>Votre <a href="${esc(apiBase)}/v1/dashboard?key=${esc(encodeURIComponent(tenantKey))}">dashboard</a> est accessible avec cette même clé (le lien ci-dessus fonctionne directement). Pour le self-hosted et l'intégration Claude Code (MCP) : voir <a href="https://github.com/Redcreator1/Mindset-Red">la doc</a>.</p>
-  <p style="color:#94a3b8;font-size:13px">Un souci ? <a href="${esc(apiBase)}/support">Contactez le support</a> — remboursement possible sous 14 jours, voir les <a href="${esc(apiBase)}/terms">CGV</a>.</p>
+  <p style="color:#64748b;font-size:13px">Un souci ? <a href="${esc(apiBase)}/support">Contactez le support</a> — remboursement possible sous 14 jours, voir les <a href="${esc(apiBase)}/terms">CGV</a>.</p>
 </main></body></html>`;
 }
 
@@ -156,20 +157,20 @@ export function renderAppInstalled(opts: { tenantKey: string; account: string; r
 <html lang="fr"><head><meta charset="utf-8"><link rel="icon" type="image/svg+xml" href="/favicon.svg"><title>Installation confirmée — mindset-ctx</title>
 <style>
   body { margin:0; font: 15px/1.5 -apple-system, system-ui, sans-serif;
-    background: #0b1220; color: #e2e8f0; padding: 48px 32px; }
-  main { max-width: 640px; margin: 0 auto; background: #111a2e;
-    border: 1px solid #1e293b; border-radius: 14px; padding: 32px; }
+    background: #f8fafc; color: #1e293b; padding: 48px 32px; }
+  main { max-width: 640px; margin: 0 auto; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 14px; padding: 32px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   h1 { margin: 0 0 16px; font-size: 22px; }
-  h2 { margin: 28px 0 8px; font-size: 14px; color: #94a3b8; text-transform: uppercase; letter-spacing: .04em; }
-  code { background: #0b1220; padding: 8px 12px; border-radius: 6px; display: block;
+  h2 { margin: 28px 0 8px; font-size: 14px; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+  code { background: #0b1220; color: #e2e8f0; padding: 8px 12px; border-radius: 6px; display: block;
     word-break: break-all; font-family: ui-monospace, "SF Mono", Menlo, monospace; margin: 8px 0 20px; }
   code.inline { display: inline; padding: 2px 6px; margin: 0; }
   ul { list-style: none; padding: 0; margin: 0; }
-  li { padding: 6px 0; border-bottom: 1px solid #1e293b; }
+  li { padding: 6px 0; border-bottom: 1px solid #e2e8f0; }
   li:last-child { border-bottom: none; }
-  .scope { background: #0f2e1c; border: 1px solid #14532d; border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #86efac; }
-  .warn { color: #fbbf24; font-size: 13px; }
-  a { color: #60a5fa; }
+  .scope { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 16px; font-size: 13px; color: #166534; }
+  .warn { color: #b45309; font-size: 13px; }
+  a { color: #2563eb; }
 </style></head>
 <body><main>
   <h1>✅ mindset-ctx est installé sur <strong>${esc(opts.account)}</strong></h1>

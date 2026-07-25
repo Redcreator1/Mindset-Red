@@ -15,13 +15,13 @@ const LEGAL_STYLE = `
   main.legal { max-width: 720px; margin: 0 auto; padding: 32px 32px 64px; }
   main.legal h1 { font-size: 26px; margin: 8px 0 4px; }
   main.legal .updated { color: #64748b; font-size: 13px; margin: 0 0 32px; }
-  main.legal h2 { font-size: 17px; margin: 32px 0 10px; color: #e2e8f0; }
-  main.legal p, main.legal li { color: #cbd5e1; font-size: 14.5px; line-height: 1.7; }
+  main.legal h2 { font-size: 17px; margin: 32px 0 10px; color: #1e293b; }
+  main.legal p, main.legal li { color: #334155; font-size: 14.5px; line-height: 1.7; }
   main.legal ul { padding-left: 20px; margin: 8px 0; }
   main.legal li { margin: 4px 0; }
-  main.legal .todo { background: #2e2410; border: 1px solid #533f14; border-radius: 8px;
-    padding: 2px 8px; color: #d4a24c; font-size: .9em; font-weight: 600; }
-  main.legal .box { background: #111a2e; border: 1px solid #1e293b; border-radius: 10px;
+  main.legal .todo { background: #fef3c7; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 2px 8px; color: #92400e; font-size: .9em; font-weight: 600; }
+  main.legal .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
     padding: 16px 20px; margin: 16px 0; }
 </style>`;
 

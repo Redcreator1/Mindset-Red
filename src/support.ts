@@ -163,24 +163,24 @@ export function renderSupport(baseUrl?: string): string {
 <style>
   main.support { max-width: 640px; margin: 0 auto; padding: 32px 32px 64px; }
   main.support h1 { font-size: 26px; margin: 8px 0 6px; }
-  main.support > p.lede { color: #94a3b8; margin: 0 0 28px; }
-  #chat { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; padding: 18px; }
+  main.support > p.lede { color: #64748b; margin: 0 0 28px; }
+  #chat { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
   #log { display: flex; flex-direction: column; gap: 12px; min-height: 120px; margin-bottom: 14px; }
   .msg { padding: 10px 14px; border-radius: 10px; font-size: 14.5px; line-height: 1.55; max-width: 88%; white-space: pre-wrap; }
   .msg.user { align-self: flex-end; background: #2563eb; color: #fff; }
-  .msg.bot { align-self: flex-start; background: #0b1220; border: 1px solid #1e293b; color: #e2e8f0; }
-  .msg.error { align-self: flex-start; background: #2e1414; border: 1px solid #531e1e; color: #fca5a5; }
+  .msg.bot { align-self: flex-start; background: #f1f5f9; border: 1px solid #e2e8f0; color: #1e293b; }
+  .msg.error { align-self: flex-start; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
   form { display: flex; gap: 8px; }
-  input[type=text] { flex: 1; background: #0b1220; border: 1px solid #1e293b; border-radius: 8px;
-    color: #e2e8f0; padding: 10px 12px; font-size: 14.5px; }
+  input[type=text] { flex: 1; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+    color: #1e293b; padding: 10px 12px; font-size: 14.5px; }
   input[type=text]:focus { outline: 2px solid #2563eb; outline-offset: 1px; }
   button { background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 10px 18px;
     font-weight: 600; font-size: 14.5px; cursor: pointer; }
   button:disabled { opacity: .5; cursor: not-allowed; }
-  .escalate { margin-top: 20px; padding: 16px 18px; background: #0f1830; border: 1px solid #1e3a8a;
-    border-radius: 10px; font-size: 13.5px; color: #cbd5e1; }
-  .escalate a { color: #93c5fd; font-weight: 600; }
-  .unavailable { color: #d4a24c; font-size: 14px; }
+  .escalate { margin-top: 20px; padding: 16px 18px; background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 10px; font-size: 13.5px; color: #334155; }
+  .escalate a { color: #1d4ed8; font-weight: 600; }
+  .unavailable { color: #92400e; font-size: 14px; }
 </style>
 <main class="support">
   <h1>Support</h1>

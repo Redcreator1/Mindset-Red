@@ -17,19 +17,21 @@ export function esc(s: string): string {
 }
 
 const BASE_STYLE = `
-  :root { color-scheme: dark; }
+  :root { color-scheme: light; }
   * { box-sizing: border-box; }
   body { margin: 0; font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    background: #0b1220; color: #e2e8f0; }
-  a { color: #60a5fa; }
+    background: #f8fafc; color: #1e293b; }
+  a { color: #2563eb; }
   header.top { display: flex; align-items: center; justify-content: space-between;
-    padding: 20px 32px; max-width: 1100px; margin: 0 auto; }
-  .brand { font-weight: 700; font-size: 16px; color: #e2e8f0; text-decoration: none; }
+    padding: 18px 32px; background: #060a14; border-bottom: 1px solid #1e293b; }
+  header.top .inner { display: flex; align-items: center; justify-content: space-between;
+    width: 100%; max-width: 1100px; margin: 0 auto; }
+  .brand { font-weight: 700; font-size: 16px; color: #f1f5f9; text-decoration: none; }
   .brand .dot { color: #d4a24c; }
   nav.top a { margin-left: 24px; font-size: 14px; color: #94a3b8; text-decoration: none; }
-  nav.top a:hover { color: #e2e8f0; }
-  footer { padding: 40px 32px; text-align: center; color: #475569; font-size: 13px; }
-  footer a { color: #64748b; }
+  nav.top a:hover { color: #f1f5f9; }
+  footer { padding: 40px 32px; text-align: center; color: #64748b; font-size: 13px; background: #f1f5f9; border-top: 1px solid #e2e8f0; }
+  footer a { color: #475569; }
 `;
 
 /**
@@ -67,13 +69,15 @@ ${ogMeta(opts)}
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">mindset<span class="dot">·</span>ctx</a>
-  <nav class="top">
-    <a href="/docs">Documentation</a>
-    <a href="/pricing">Tarifs</a>
-    <a href="/blog">Blog</a>
-    <a href="${REPO_URL}">GitHub</a>
-  </nav>
+  <div class="inner">
+    <a class="brand" href="/">mindset<span class="dot">·</span>ctx</a>
+    <nav class="top">
+      <a href="/docs">Documentation</a>
+      <a href="/pricing">Tarifs</a>
+      <a href="/blog">Blog</a>
+      <a href="${REPO_URL}">GitHub</a>
+    </nav>
+  </div>
 </header>
 ${opts.body}
 <footer>
@@ -88,29 +92,30 @@ ${opts.body}
 export function renderHome(baseUrl?: string): string {
   const body = `
 <style>
-  main.hero { max-width: 780px; margin: 0 auto; padding: 48px 32px 32px; text-align: center; }
-  h1 { font-size: clamp(28px, 4.4vw, 42px); line-height: 1.2; margin: 0 0 20px; text-wrap: balance; }
-  h1 .accent { color: #60a5fa; }
-  .sub { font-size: 18px; color: #94a3b8; max-width: 56ch; margin: 0 auto 32px; }
-  .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+  main.hero { max-width: 900px; margin: 0 auto; padding: 88px 32px 40px; text-align: left; }
+  h1 { font-size: clamp(40px, 7vw, 76px); font-weight: 800; letter-spacing: -0.02em;
+    line-height: 1.04; margin: 0 0 24px; text-wrap: balance; }
+  h1 .accent { color: #2563eb; }
+  .sub { font-size: 19px; color: #475569; max-width: 56ch; margin: 0 0 36px; }
+  .cta-row { display: flex; gap: 14px; justify-content: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
   .cta { display: inline-block; padding: 12px 24px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; }
   .cta.primary { background: #2563eb; color: #fff; }
-  .cta.secondary { background: #1e293b; color: #e2e8f0; }
-  .cta:hover { filter: brightness(1.12); }
+  .cta.secondary { background: #fff; color: #1e293b; border: 1px solid #cbd5e1; }
+  .cta:hover { filter: brightness(1.06); }
 
   section.strip { max-width: 1000px; margin: 56px auto; padding: 0 32px; }
   .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-  .card { background: #111a2e; border: 1px solid #1e293b; border-radius: 14px; padding: 24px; }
-  .card .tag { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #60a5fa; }
-  .card h3 { margin: 8px 0 8px; font-size: 17px; }
-  .card p { margin: 0; color: #94a3b8; font-size: 14px; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  .card .tag { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #2563eb; }
+  .card h3 { margin: 8px 0 8px; font-size: 17px; color: #1e293b; }
+  .card p { margin: 0; color: #64748b; font-size: 14px; }
 
   section.trust { max-width: 700px; margin: 56px auto; padding: 0 32px; text-align: center; }
-  section.trust p { color: #94a3b8; font-size: 15px; }
-  section.trust strong { color: #e2e8f0; }
+  section.trust p { color: #64748b; font-size: 15px; }
+  section.trust strong { color: #1e293b; }
 
   section.quick { max-width: 700px; margin: 0 auto 64px; padding: 0 32px; }
-  section.quick h2 { font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; text-align: center; margin-bottom: 16px; }
+  section.quick h2 { font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: #64748b; text-align: center; margin-bottom: 16px; }
   pre { background: #0b1220; border: 1px solid #1e293b; border-radius: 10px; padding: 18px 20px;
     overflow-x: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13.5px; color: #cbd5e1; }
 </style>
@@ -235,12 +240,12 @@ export function renderDocs(baseUrl?: string): string {
 <style>
   main.docs { max-width: 860px; margin: 0 auto; padding: 32px 32px 64px; }
   main.docs h1 { font-size: 28px; margin: 8px 0 8px; }
-  main.docs > p { color: #94a3b8; margin: 0 0 36px; max-width: 60ch; }
+  main.docs > p { color: #64748b; margin: 0 0 36px; max-width: 60ch; }
   .doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
-  .doc-card { background: #111a2e; border: 1px solid #1e293b; border-radius: 12px; padding: 22px 24px; }
-  .doc-card h2 { margin: 0 0 12px; font-size: 15px; color: #60a5fa; }
+  .doc-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 22px 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+  .doc-card h2 { margin: 0 0 12px; font-size: 15px; color: #2563eb; }
   .doc-card ul { list-style: none; margin: 0; padding: 0; }
-  .doc-card li { padding: 7px 0; border-bottom: 1px solid #1e293b; font-size: 14px; }
+  .doc-card li { padding: 7px 0; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
   .doc-card li:last-child { border-bottom: none; }
 </style>
 <main class="docs">
@@ -263,8 +268,8 @@ export function renderDocs(baseUrl?: string): string {
 export function render404(baseUrl?: string): string {
   const body = `
 <main style="max-width:520px;margin:100px auto;padding:0 32px;text-align:center">
-  <h1 style="font-size:64px;margin:0 0 8px;color:#60a5fa">404</h1>
-  <p style="color:#94a3b8;font-size:17px;margin:0 0 28px">Cette page n'existe pas.</p>
+  <h1 style="font-size:64px;margin:0 0 8px;color:#2563eb">404</h1>
+  <p style="color:#64748b;font-size:17px;margin:0 0 28px">Cette page n'existe pas.</p>
   <a href="/" style="display:inline-block;padding:12px 24px;border-radius:10px;background:#2563eb;color:#fff;text-decoration:none;font-weight:600">Retour à l'accueil</a>
 </main>`;
   return shell({ title: "Page introuvable — mindset-ctx", description: "Cette page n'existe pas.", body, baseUrl });
