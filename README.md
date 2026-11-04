@@ -37,6 +37,21 @@ Node ≥ 20. Une seule dépendance runtime : le SDK officiel `@anthropic-ai/sdk`
 exemples ci-dessous utilisent `node dist/cli.js` (installation depuis le
 repo) — remplacez par `ctx` si vous avez installé via npm.
 
+### En tant que skill d'agent (Claude Code, Cursor, Codex…)
+
+Le dossier [`skills/mindset-ctx/`](skills/mindset-ctx/SKILL.md) est un skill au
+format `SKILL.md` : l'agent lance `ctx generate`, puis complète lui-même la
+section manuelle (sous le marqueur `ctx:manual`) avec les conventions et pièges
+propres au repo. Installation pour Claude Code :
+
+```bash
+git clone --depth 1 https://github.com/Redcreator1/Mindset-Red /tmp/mindset-red
+cp -r /tmp/mindset-red/skills/mindset-ctx ~/.claude/skills/        # pour tous vos projets
+# ou : cp -r /tmp/mindset-red/skills/mindset-ctx .claude/skills/   # pour ce repo seulement
+```
+
+Puis demandez simplement à l'agent : « génère le CLAUDE.md de ce repo ».
+
 ## Utilisation
 
 ```bash
