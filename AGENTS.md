@@ -29,3 +29,31 @@ Instructions for AI coding agents (Claude Code, Cursor, Copilot Workspace, …) 
 - Dependencies: currently 4 (see manifest: package.json) — keep the footprint minimal.
 
 <!-- ctx:manual — everything below this line is yours, never overwritten -->
+
+## Project knowledge
+
+### Two runtimes, one codebase
+- **Node** — `src/cli.ts` → `src/server.ts` (self-hosted API, MCP via `src/mcp.ts`). May use `node:fs`.
+- **Cloudflare Worker** — `src/worker/index.ts`, the hosted site at mindsetctx.com (state in the `CTX_KV` namespace).
+  It cannot import `node:fs`: pure helpers live in `src/tenant-core.ts`, stateful ones in `src/tenants.ts`.
+- Page renderers (`home.ts`, `pricing.ts`, `blog.ts`, `legal.ts`, `security.ts`, `support.ts`, `seo.ts`…) are
+  shared by both — keep them free of Node-only imports. `src/rank-ml.ts` is Node-only by design; the Worker uses Rank v0.
+
+### What happens on push to `main`
+- `deploy-cloudflare.yml` deploys the Worker to production — merging **is** a production deploy.
+- `context-refresh.yml` regenerates `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `docs/ARCHITECTURE.md`,
+  `.context/prompts.md` and commits them. Edits above the `ctx:manual` marker are lost; write below it.
+- npm publishing is **manual** (`npm-publish.yml`, `workflow_dispatch`) — bump `package.json` `version` first.
+  The CLI reads its version from `package.json`; never hard-code it.
+
+### Conventions
+- Tests run against compiled output: `npm test` builds, then runs `dist/test/*.test.js`. New tests go in `src/test/<name>.test.ts`.
+- One runtime dependency (`@anthropic-ai/sdk`). `@huggingface/transformers` was removed for a high-severity vuln (#28) — don't re-add heavy deps.
+- Secrets reach the Worker via `wrangler secret put` from CI; never put them in `wrangler.toml`.
+- The README and site copy are in French; code, comments and commit messages in English.
+- Marketing copy must match what the hosted plan actually delivers (#27).
+- Strategic/business decision logs stay out of this public repo (moved out in 199d88c).
+
+### The agent skill
+- `skills/mindset-ctx/SKILL.md` wraps the CLI as a SKILL.md skill. `src/test/skill.test.ts` fails if it drifts
+  from the code (marker text, CLI commands) — update both together when renaming a command.
