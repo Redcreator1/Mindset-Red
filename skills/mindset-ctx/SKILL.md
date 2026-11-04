@@ -83,8 +83,9 @@ reading the code*. Read the key entry points, configs, tests and recent history
 Rules for this section:
 
 - **Specific over generic.** "Run `npm test` before committing" is already in
-  the generated part. Write things like "`src/tenants.ts` rewrites
-  `ctx.tenants.json` in place — never hand-edit it while the server runs."
+  the generated part. Write things like "the server rewrites
+  `config/tenants.json` in place — never hand-edit it while it runs" (with
+  the real file names of *this* repo).
 - **Verifiable.** Every command, path and file name you mention must exist.
   Check before writing it.
 - **Short.** Agents load this file on every task. Aim for 20–60 lines of
@@ -136,5 +137,8 @@ over, so regeneration is always safe.
   generation and write the files by hand following the table above, keeping
   the marker line so a later `ctx generate` can take over.
 - **No network for `npx`** → same fallback.
+- **`ctx: not found` inside the mindset-ctx repo itself** → `npx` resolves
+  to the local, unbuilt package. Run `npm run build && node dist/cli.js
+  generate .` instead.
 - **Monorepo** → run `generate` at the root first; run it again inside a
   package only if the user wants per-package context files.
