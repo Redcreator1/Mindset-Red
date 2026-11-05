@@ -13,16 +13,40 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Machine Learning"],
-  "keywords": ["ai", "context", "claude", "cursor", "mcp", "claude.md"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Other",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "ai",
+    "context",
+    "claude",
+    "cursor",
+    "mcp",
+    "claude.md"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
-      { "command": "mindsetCtx.generate", "title": "mindset-ctx: Generate Context Files" },
-      { "command": "mindsetCtx.index", "title": "mindset-ctx: Index Memory (git + PRs/issues)" },
-      { "command": "mindsetCtx.copyMcpConfig", "title": "mindset-ctx: Copy MCP Server Command" },
-      { "command": "mindsetCtx.openDashboard", "title": "mindset-ctx: Open Hosted Dashboard" }
+      {
+        "command": "mindsetCtx.generate",
+        "title": "mindset-ctx: Generate Context Files"
+      },
+      {
+        "command": "mindsetCtx.index",
+        "title": "mindset-ctx: Index Memory (git + PRs/issues)"
+      },
+      {
+        "command": "mindsetCtx.copyMcpConfig",
+        "title": "mindset-ctx: Copy MCP Server Command"
+      },
+      {
+        "command": "mindsetCtx.openDashboard",
+        "title": "mindset-ctx: Open Hosted Dashboard"
+      }
     ],
     "configuration": {
       "title": "mindset-ctx",
@@ -52,7 +76,12 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.85.0",
-    "@vscode/vsce": "^3.0.0",
+    "@vscode/vsce": "^4.1.0",
     "typescript": "^5.6.0"
+  },
+  "overrides": {
+    "@vscode/vsce": {
+      "minimatch": "^11.0.4"
+    }
   }
 }

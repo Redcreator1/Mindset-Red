@@ -40,8 +40,8 @@ Then press `F5` in VS Code (with this folder open) to launch an Extension
 Development Host with it loaded — or package it:
 
 ```bash
-npx @vscode/vsce package   # → mindset-ctx-0.1.0.vsix
-code --install-extension mindset-ctx-0.1.0.vsix
+npm run package   # → mindset-ctx-0.1.2.vsix (uses the locked vsce; needs Node ≥ 22)
+code --install-extension mindset-ctx-0.1.2.vsix
 ```
 
 ## Testing
