@@ -48,6 +48,29 @@ const DIR_NOTES: Record<string, string> = {
   apps: "workspace apps (monorepo)",
 };
 
+/**
+ * The repo's default branch — NOT the branch currently checked out. Running
+ * `ctx generate` from a feature branch must not write "never push to
+ * <feature-branch>" into AGENTS.md. origin/HEAD is often missing (CI
+ * checkouts, some clones), so fall back to well-known names before the
+ * current branch.
+ */
+export function detectDefaultBranch(root: string): string | null {
+  const headRef = git(root, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
+  if (headRef?.startsWith("refs/remotes/origin/")) return headRef.slice("refs/remotes/origin/".length);
+  const exists = (ref: string) => git(root, ["rev-parse", "--verify", "--quiet", ref]) !== null;
+  for (const name of ["main", "master"]) {
+    if (exists(`refs/remotes/origin/${name}`)) return name;
+  }
+  for (const name of ["main", "master"]) {
+    if (exists(`refs/heads/${name}`)) return name;
+  }
+  const configured = git(root, ["config", "--get", "init.defaultBranch"]);
+  if (configured && exists(`refs/heads/${configured}`)) return configured;
+  const current = git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  return current && current !== "HEAD" ? current : null;
+}
+
 function git(root: string, args: string[]): string | null {
   try {
     return execFileSync("git", ["-C", root, ...args], {
@@ -145,8 +168,7 @@ export function analyzeRepo(root: string): RepoAnalysis {
   const hasCI = existsSync(join(root, ".github", "workflows"));
 
   const remote = git(root, ["remote", "get-url", "origin"]);
-  const headRef = git(root, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
-  const defaultBranch = headRef ? headRef.split("/").pop() ?? null : git(root, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  const defaultBranch = detectDefaultBranch(root);
 
   return {
     root,

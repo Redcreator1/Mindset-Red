@@ -71,3 +71,15 @@ test("MCP server implements the protocol lifecycle and tools", () => {
   const badMethod = handle({ jsonrpc: "2.0", id: 7, method: "does/not/exist" });
   assert.equal(badMethod?.error?.code, -32601);
 });
+
+test("ctx mcp reports the package.json version (no hard-coded drift)", () => {
+  const cli = join(dirname(new URL(import.meta.url).pathname), "..", "cli.js");
+  const pkg = JSON.parse(execFileSync("node", ["-p", "JSON.stringify(require('./package.json'))"], { encoding: "utf8" }));
+  const out = execFileSync("node", [cli, "mcp", makeRepo()], {
+    input: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) + "\n",
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  const init = JSON.parse(out.trim().split("\n")[0]);
+  assert.equal(init.result.serverInfo.version, pkg.version);
+});
